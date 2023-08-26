@@ -1,0 +1,1693 @@
+---
+title: "Vignette Title"
+author: "Zhuangzhuang Wang"
+date: "`r Sys.Date()`"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+vignette: >
+  %\VignetteIndexEntry{Vignette Title}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r}
+rm(list = ls())
+```
+
+## Load required R packages
+
+```{r, warning=FALSE}
+library(raster)
+library(terra)
+library(sf)
+library(dplyr) 
+library(naniar) 
+library(ggplot2)
+library(ggthemes)
+library(ggforce)
+library(eoffice)
+library(rgdal)
+library(tsbox)
+#provide ts_df()
+library(lubridate)
+library(bfast)
+library(ggpubr)
+library(agricolae)
+library(bfast)
+library(stats)
+library(tidyr)
+```
+
+
+## Define a mapping theme
+
+```{r}
+theme_custom <- function(){
+  myTheme <- theme(panel.background = element_rect(fill = 'white',color = 'black',size = 0.5),
+                   panel.grid = element_blank(),
+                   legend.position = 'none',
+                   plot.margin = margin(5,5,3,3),
+                   plot.background = element_blank(),
+                   axis.ticks = element_line(size = 0.2),
+                   axis.ticks.length = unit(0.15,'lines'), #-0.15 inner
+                   axis.title.y = element_text(size = 10.5,margin = margin(0,0,0,0),face = 'bold',family = 'Arial'),
+                   axis.title.x = element_text(size = 10.5,margin = margin(2,0,0,0),face = 'bold',family = 'Arial'),
+                   axis.text.y = element_text(size = 9,margin = margin(0,6,0,0),family = 'Arial',color = '#000000'),
+                   axis.text.x = element_text(size = 9,margin = margin(8,0,0,0),family = 'Arial',color = '#000000'))
+  return(myTheme)
+}
+```
+
+
+## Temporal patterns of vegetation dynamics and resilience
+
+### Temporal trajectories of kNDVI and AR(1) (Fig. 1a)
+
+```{r}
+##==== prepare data ====##
+kNDVI_monthly_mean<-rast("E:/Article writing/3 Vegetation greening and resilience/Datasets/2Vegetation dynamics/kNDVI2000_2020_mean_win60.tif")
+kNDVI_monthly_mean<-stack(kNDVI_monthly_mean)
+
+AR1_pixel_win60_tw19<-rast("E:/Article writing/3 Vegetation greening and resilience/Datasets/1Resilience indicators/AR1_pixel_win60_tw19_2000_2020.tif")
+AR1_pixel_win60_tw19<-stack(AR1_pixel_win60_tw19)
+
+vegetation_land<-raster("E:/Article writing/3 Vegetation greening and resilience/Datasets/3Vegetated land/vegetation_land_unchanged.tif")
+##==== prepare data ====##
+
+##==== Calculate ====##
+kNDVI_mean<-data.frame()
+alpha=0.05 #confidence level
+for (i in 1:192){
+  mask<-mask(kNDVI_monthly_mean[[i]],vegetation_land)
+  mean_val<-cellStats(mask,stat='mean')
+  #confidence level
+  n<-cellStats(!is.na(mask), stat='sum')
+  Z<-qt(1-alpha/2,n-1)
+  sd_val<-cellStats(mask,stat='sd')
+  ci<-Z*sd_val/sqrt(n)
+  kNDVI_mean[i,1]<-mean_val
+  kNDVI_mean[i,2]<-ci
+  print(i)
+}
+
+#95% confidence interval magnified by a factor of 10 for visual purposes
+kNDVI_mean$up_bound<-kNDVI_mean$V1+kNDVI_mean$V2*10
+kNDVI_mean$lower_bound<-kNDVI_mean$V1-kNDVI_mean$V2*10
+kNDVI_mean$ID<-rownames(kNDVI_mean)
+
+ggplot(kNDVI_mean,mapping=aes(x=as.numeric(ID),group=1))+
+  geom_line(aes(y=V1),color='grey')+
+  geom_line(aes(y=up_bound))+
+  geom_line(aes(y=lower_bound))
+
+
+AR1_mean<-data.frame()
+for (i in 1:192){
+  mask<-mask(AR1_pixel_win60_tw19[[i]],vegetation_land)
+  mean_val<-cellStats(mask,stat='mean')
+  #confidence level
+  n<-cellStats(!is.na(mask), stat='sum')
+  Z<-qt(1-alpha/2,n-1)
+  sd_val<-cellStats(mask,stat='sd')
+  ci<-Z*sd_val/sqrt(n)
+  AR1_mean[i,1]<-mean_val
+  AR1_mean[i,2]<-ci
+  print(i)
+}
+
+AR1_mean$up_bound<-AR1_mean$V1+AR1_mean$V2*10
+AR1_mean$lower_bound<-AR1_mean$V1-AR1_mean$V2*10
+AR1_mean$ID<-rownames(AR1_mean)
+
+#save(kNDVI_mean,file = "E:/Article writing/3 Vegetation greening and resilience/Datasets/kNDVI_monthly_vegland/kNDVI_mean_win60_1_192.RData")
+#save(AR1_mean,file = "E:/Article writing/3 Vegetation greening and resilience/Datasets/AR1_pixel_win60/AR1_mean_win60_1_192.RData")
+#load("E:/Article writing/3 Vegetation greening and resilience/Datasets/kNDVI_monthly_vegland/kNDVI_mean_win60_1_192.RData")
+#load("E:/Article writing/3 Vegetation greening and resilience/Datasets/AR1_pixel_win60/AR1_mean_win60_1_192.RData")
+
+#kNDVI_mean$lower_bound<-kNDVI_mean$V1-kNDVI_mean$V2
+#kNDVI_mean$upper_bound<-kNDVI_mean$V1+kNDVI_mean$V2
+#AR1_mean$lower_bound<-AR1_mean$V1-AR1_mean$V2
+#AR1_mean$upper_bound<-AR1_mean$V1+AR1_mean$V2
+colnames(kNDVI_mean)<-c("kNDVI_mean","sd","kNDVI_lower_bound","kNDVI_upper_bound")
+colnames(AR1_mean)<-c("AR1_mean","sd","AR1_lower_bound","AR1_upper_bound")
+
+colnames(kNDVI_mean)<-c("kNDVI_mean","ci","kNDVI_up_bound","kNDVI_lower_bound")
+colnames(AR1_mean)<-c("AR1_mean","ci","AR1_up_bound","AR1_lower_bound")
+
+time<-ts(AR1_mean[,1],start=c(2005,1),frequency = 12)
+time<-ts_df(ts_c(time = time))
+
+alldata<-cbind(time[,1],kNDVI_mean[,c(1,3,4)],AR1_mean[,c(1,3,4)])
+names(alldata)[names(alldata) == 'time[, 1]'] <- 'time'
+
+#detecting breakpoint AR(1)
+AR1_mean2<-ts(AR1_mean[,1],start=c(2005,1), frequency=12)
+
+bfast(AR1_mean2,h=0.15,season="none",breaks=1)  #2010.12
+bfast(AR1_mean2,h=0.2,season="none",breaks=1)  #2010.12
+bfast(AR1_mean2,h=0.3,season="none",breaks=1)  #2010.12
+
+p1<-AR1_mean2[1:72]
+timevec1<-c(1:72)
+p2<-AR1_mean2[73:192]
+timevec2<-c(1:120)
+
+cor.test(timevec1,p1,alternative=c("two.sided"),
+                   method=c("kendall"),conf.level=0.95)
+cor.test(timevec2,p2,alternative=c("two.sided"),
+                   method=c("kendall"),conf.level=0.95)
+
+#kNDVI 
+kNDVI_mean2<-ts(kNDVI_mean[,1],start = c(2005,1),frequency=12)
+bfast::bfast(kNDVI_mean2,h=0.15,season = ("none"),breaks = 1)
+timevec3<-c(1:192)
+
+cor.test(timevec3,kNDVI_mean2,alternative=c("two.sided"),
+                   method=c("kendall"),conf.level=0.95)
+
+##==== Calculate ====##
+
+
+##==== Draw ====##
+ggplot(alldata,aes(x=time)) +
+  geom_rect(aes(xmin=make_date(2005,1), xmax=make_date(2010,12), ymin=-Inf, ymax=Inf),fill='#B5CFD8',alpha = .3)+ #eaf6f6 #d3d4d8 #8f8787 #ebcbae
+  geom_rect(aes(xmin=make_date(2010,12), xmax=make_date(2020,12), ymin=-Inf, ymax=Inf),fill='#E8ECF1',alpha = .3)+
+  geom_line(mapping=aes(x=time,y = kNDVI_mean),size=0.8,color="#679B41") +  #linetype = 'solid', #679B41
+  geom_ribbon(aes(ymin=kNDVI_lower_bound, ymax=kNDVI_up_bound), alpha=0.25, fill = "#679B41" 
+              )+ #color = "black", linetype = "dotted"
+  scale_y_continuous(breaks = seq(0.1,0.2,0.05),
+                     labels = seq(0.1,0.2,0.05),
+                     name="Mean KNDVI",
+                     sec.axis = sec_axis(~. *2.5,
+                                         name="Mean AR(1)")
+                     )+
+  geom_line(mapping=aes(y=AR1_mean/2.5),size=0.8,color="#ffb400")+
+  geom_ribbon(aes(ymin=AR1_lower_bound/2.5, ymax=AR1_up_bound/2.5), alpha=0.25, fill = "#ffb400" 
+              )+ #color = "black", linetype = "dotted"
+
+  theme_tsbox() +
+  scale_color_tsbox()+
+  theme_few()+
+  theme(axis.title.x = element_text(color = "black", size = 10, family = "Arial"),
+        axis.title.y = element_text(color = "black", size = 10, family = "Arial"),
+        axis.text = element_text(color = "black", size = 10, family = "Arial"),
+        panel.border = element_rect(colour = "black", size=0.7),
+        aspect.ratio = 3/4,
+        legend.position="none")
+  
+```
+
+
+### Histogram of grid-level kNDVI Kendall τ (Fig. 1b)
+
+```{r}
+##==== prepare data ====##
+kNDVI_kendall_00_10<-rast("E:/Article writing/3 Vegetation greening and resilience/Datasets/2Vegetation dynamics/kNDVI_mean_2000_2010_kendall_tau.tif")
+kNDVI_kendall_11_20<-rast("E:/Article writing/3 Vegetation greening and resilience/Datasets/2Vegetation dynamics/kNDVI_mean_2011_2020_kendall_tau.tif")
+
+#load vegetation areas to mask kNDVI_trend
+vegetation_land<-raster("E:/Article writing/3 Vegetation greening and resilience/Datasets/3Vegetated land/vegetation_land_unchanged.tif")
+
+
+#mask kNDVI trend by land use
+kNDVI_tau_00_10<-mask(raster(kNDVI_kendall_00_10[[1]]),vegetation_land)
+pvalue_00_10<-mask(raster(kNDVI_kendall_00_10[[2]]),vegetation_land)
+kNDVI_tau_11_20<-mask(raster(kNDVI_kendall_11_20[[1]]),vegetation_land)
+pvalue_11_20<-mask(raster(kNDVI_kendall_11_20[[2]]),vegetation_land)
+
+#data 2000-2010
+kNDVI_tau_00_10 <- as(kNDVI_tau_00_10, "SpatialPixelsDataFrame")
+kNDVI_tau_00_10 <- as.data.frame(kNDVI_tau_00_10) %>% 
+  rename(kendall_coef = kendall_coef)
+pvalue_00_10 <- as(pvalue_00_10, "SpatialPixelsDataFrame")
+pvalue_00_10 <- as.data.frame(pvalue_00_10) %>% 
+  rename(kendall_pvalue = kendall_pvalue)
+data_00_10<-cbind(kNDVI_tau_00_10[,2:3],kNDVI_tau_00_10[,1],pvalue_00_10[,1])
+colnames(data_00_10) <- c('x','y','tau','pvalue')
+findSet1 <- which(is.na(data_00_10$pvalue)|(data_00_10$pvalue > 0.05))
+data_00_10 <- data_00_10[-findSet1,]
+data_00_10<-data_00_10[,3]
+
+#data 2011-2020
+kNDVI_tau_11_20 <- as(kNDVI_tau_11_20, "SpatialPixelsDataFrame")
+kNDVI_tau_11_20 <- as.data.frame(kNDVI_tau_11_20) %>% 
+  rename(kendall_coef = kendall_coef)
+pvalue_11_20 <- as(pvalue_11_20, "SpatialPixelsDataFrame")
+pvalue_11_20 <- as.data.frame(pvalue_11_20) %>% 
+  rename(kendall_pvalue = kendall_pvalue)
+data_11_20<-cbind(kNDVI_tau_11_20[,2:3],kNDVI_tau_11_20[,1],pvalue_11_20[,1])
+colnames(data_11_20) <- c('x','y','tau','pvalue')
+findSet2 <- which(is.na(data_11_20$pvalue)|(data_11_20$pvalue > 0.05))
+data_11_20 <- data_11_20[-findSet2,]
+data_11_20<-data_11_20[,3]
+
+#statistics for annotations larger or smaller than zero
+length(which(data_00_10>0))/nrow(kNDVI_tau_00_10)
+length(which(data_00_10<0))/nrow(kNDVI_tau_00_10)
+
+length(which(data_11_20>0))/nrow(kNDVI_tau_11_20)
+length(which(data_11_20<0))/nrow(kNDVI_tau_11_20)
+
+#merge data
+kNDVI_trend_data = data.frame(
+  type = factor(c(rep("data_00_10",times=309293),rep("data_11_20",times=309396))),
+  value = c(data_00_10, data_11_20)
+)
+
+
+##==== prepare data ====##
+
+##==== Draw ====##
+ggplot(kNDVI_trend_data,aes(value,fill=type,colour = type)) +
+  geom_histogram(bins = 50, #aes(y=..density..)
+                 alpha=0.45,
+                 position = "identity")+  
+  #geom_density(alpha=.2)+
+  scale_color_manual(values = c("#f46f20","#156077"))+ 
+  scale_fill_manual(values = c("#f46f20","#156077"))+
+  geom_vline(xintercept=0,lty=5)+                       
+  theme_few()+
+  theme(axis.title.x = element_text(color = "black", size = 8, family = "Arial"),
+        axis.title.y = element_text(color = "black", size = 8, family = "Arial"),
+        axis.text = element_text(color = "black", size = 8, family = "Arial"),
+        panel.border = element_rect(colour = "black", size=0.5),
+        legend.position = 'right',
+        aspect.ratio = 3/4
+  )
+
+
+```
+
+### Histogram of grid-level AR(1) Kendall τ (Fig. 1c)
+
+```{r}
+##==== prepare data ====##
+AR1_win60_kendall_2000_2010<-rast("E:/Article writing/3 Vegetation greening and resilience/Datasets/1Resilience indicators/AR1_pixel_win60_tw19_2000_2010_kendall_tau.tif")
+AR1_win60_kendall_2011_2020<-rast("E:/Article writing/3 Vegetation greening and resilience/Datasets/1Resilience indicators/AR1_pixel_win60_tw19_2011_2020_kendall_tau.tif")
+
+#load vegetation land for mask purpose
+vegetation_land<-raster("E:/Article writing/3 Vegetation greening and resilience/Datasets/3Vegetated land/vegetation_land_unchanged.tif")
+
+#mask kendall tau by land use
+all_coef_00_10<-mask(raster(AR1_win60_kendall_2000_2010[[1]]),vegetation_land)
+all_pvalue_00_10<-mask(raster(AR1_win60_kendall_2000_2010[[2]]),vegetation_land)
+all_coef_11_20<-mask(raster(AR1_win60_kendall_2011_2020[[1]]),vegetation_land)
+all_pvalue_11_20<-mask(raster(AR1_win60_kendall_2011_2020[[2]]),vegetation_land)
+
+#prepare all data
+all_coef_00_10 <- as(all_coef_00_10, "SpatialPixelsDataFrame")
+all_coef_00_10 <- as.data.frame(all_coef_00_10) %>% 
+  rename(kendall_coef = kendall_coef)
+all_pvalue_00_10 <- as(all_pvalue_00_10, "SpatialPixelsDataFrame")
+all_pvalue_00_10 <- as.data.frame(all_pvalue_00_10) %>% 
+  rename(kendall_pvalue = kendall_pvalue)
+all_data_00_10<-cbind(all_coef_00_10[,2:3],all_coef_00_10[,1],all_pvalue_00_10[,1])
+colnames(all_data_00_10) <- c('x','y','coef','p')
+findSet1 <- which(is.na(all_data_00_10$p)|(all_data_00_10$p > 0.05))
+all_data_00_10 <- all_data_00_10[-findSet1,]
+all_data_00_10<-all_data_00_10[,3]
+
+all_coef_11_20 <- as(all_coef_11_20, "SpatialPixelsDataFrame")
+all_coef_11_20 <- as.data.frame(all_coef_11_20) %>% 
+  rename(kendall_coef = kendall_coef)
+all_pvalue_11_20 <- as(all_pvalue_11_20, "SpatialPixelsDataFrame")
+all_pvalue_11_20 <- as.data.frame(all_pvalue_11_20) %>% 
+  rename(kendall_pvalue = kendall_pvalue)
+all_data_11_20<-cbind(all_coef_11_20[,2:3],all_coef_11_20[,1],all_pvalue_11_20[,1])
+colnames(all_data_11_20) <- c('x','y','coef','p')
+findSet2 <- which(is.na(all_data_11_20$p)|(all_data_11_20$p > 0.05))
+all_data_11_20 <- all_data_11_20[-findSet2,]
+all_data_11_20<-all_data_11_20[,3]
+
+#statistics for annotations larger or smaller than zero
+#effective unchanged vegetation land 331528
+length(all_data_00_10) #254701
+length(which(all_data_00_10>0)) #67117
+length(which(all_data_00_10<0)) #187584
+67117/331528
+187584/331528
+
+length(all_data_11_20) #265076
+length(which(all_data_11_20>0)) #139584
+length(which(all_data_11_20<0)) #125492
+139584/331528
+125492/331528
+
+
+#combine data
+all_data = data.frame(
+  type = factor(c(rep("all_data_00_10",times=254701),
+                  rep("all_data_11_20",times=265076))),
+  value = c(all_data_00_10, all_data_11_20))
+
+##==== draw ====##
+ggplot(all_data,aes(value,fill=type,colour = type)) +
+  geom_histogram(bins = 50,
+                 alpha=0.4,
+                 
+                 #lwd = 0.75,
+                 #linetype = 1,
+                 position = "identity")+  #colour = "black",
+  #geom_density(alpha=.2)+
+  scale_color_manual(values = c("#0A6A62","#925710"))+  #"#0A6A62","#925710"  #"#178f92","#845d29"
+  scale_fill_manual(values = c("#0A6A62","#925710"))+
+  geom_vline(xintercept=0,lty=5)+                       
+  theme_few()+
+  theme(axis.title.x = element_text(color = "black", size = 8, family = "Arial"),
+        axis.title.y = element_text(color = "black", size = 8, family = "Arial"),
+        axis.text = element_text(color = "black", size = 8, family = "Arial"),
+        panel.border = element_rect(colour = "black", size=0.5),
+        legend.position = 'right',
+        aspect.ratio = 3/4
+  )
+
+
+```
+
+### Overlay kNDVI Kendall τ and AR(1) Kendall τ (Fig.1d-f)
+
+```{r}
+##==== prepare data ====##
+AR1_win60_kendall_2000_2010<-rast("E:/Article writing/3 Vegetation greening and resilience/Datasets/1Resilience indicators/AR1_pixel_win60_tw19_2000_2010_kendall_tau.tif")
+AR1_win60_kendall_2011_2020<-rast("E:/Article writing/3 Vegetation greening and resilience/Datasets/1Resilience indicators/AR1_pixel_win60_tw19_2011_2020_kendall_tau.tif")
+AR1_win60_kendall_2000_2020<-rast("E:/Article writing/3 Vegetation greening and resilience/Datasets/1Resilience indicators/AR1_pixel_win60_tw19_2000_2020_kendall_tau.tif")
+
+kNDVI_kendall_00_10<-rast("E:/Article writing/3 Vegetation greening and resilience/Datasets/2Vegetation dynamics/kNDVI_mean_2000_2010_kendall_tau.tif")
+kNDVI_kendall_11_20<-rast("E:/Article writing/3 Vegetation greening and resilience/Datasets/2Vegetation dynamics/kNDVI_mean_2011_2020_kendall_tau.tif")
+kNDVI_kendall_00_20<-rast("E:/Article writing/3 Vegetation greening and resilience/Datasets/2Vegetation dynamics/kNDVI_mean_2000_2020_kendall_tau.tif")
+
+#load vegetation areas to mask kNDVI_trend
+vegetation_land<-raster("E:/Article writing/3 Vegetation greening and resilience/Datasets/3Vegetated land/vegetation_land_unchanged.tif")
+
+#mask by land use data
+AR1_tau_00_10<-mask(raster(AR1_win60_kendall_2000_2010[[1]]),vegetation_land)
+AR1_pvalue_00_10<-mask(raster(AR1_win60_kendall_2000_2010[[2]]),vegetation_land)
+AR1_tau_11_20<-mask(raster(AR1_win60_kendall_2011_2020[[1]]),vegetation_land)
+AR1_pvalue_11_20<-mask(raster(AR1_win60_kendall_2011_2020[[2]]),vegetation_land)
+AR1_tau_00_20<-mask(raster(AR1_win60_kendall_2000_2020[[1]]),vegetation_land)
+AR1_pvalue_00_20<-mask(raster(AR1_win60_kendall_2000_2020[[2]]),vegetation_land)
+
+kNDVI_tau_00_10<-mask(raster(kNDVI_kendall_00_10[[1]]),vegetation_land)
+kNDVI_pvalue_00_10<-mask(raster(kNDVI_kendall_00_10[[2]]),vegetation_land)
+kNDVI_tau_11_20<-mask(raster(kNDVI_kendall_11_20[[1]]),vegetation_land)
+kNDVI_pvalue_11_20<-mask(raster(kNDVI_kendall_11_20[[2]]),vegetation_land)
+kNDVI_tau_00_20<-mask(raster(kNDVI_kendall_00_20[[1]]),vegetation_land)
+kNDVI_pvalue_00_20<-mask(raster(kNDVI_kendall_00_20[[2]]),vegetation_land)
+
+#data transformation
+AR1_tau_00_10 <- as(AR1_tau_00_10, "SpatialPixelsDataFrame")
+AR1_tau_00_10 <- as.data.frame(AR1_tau_00_10) %>% 
+  rename(kendall_coef = kendall_coef)
+AR1_pvalue_00_10 <- as(AR1_pvalue_00_10, "SpatialPixelsDataFrame")
+AR1_pvalue_00_10 <- as.data.frame(AR1_pvalue_00_10) %>% 
+  rename(kendall_pvalue = kendall_pvalue)
+AR1_00_10<-cbind(AR1_tau_00_10[,2:3],AR1_tau_00_10[,1],AR1_pvalue_00_10[,1])
+colnames(AR1_00_10) <- c('x','y','tau','pvalue')
+
+AR1_tau_11_20 <- as(AR1_tau_11_20, "SpatialPixelsDataFrame")
+AR1_tau_11_20 <- as.data.frame(AR1_tau_11_20) %>% 
+  rename(kendall_coef = kendall_coef)
+AR1_pvalue_11_20 <- as(AR1_pvalue_11_20, "SpatialPixelsDataFrame")
+AR1_pvalue_11_20 <- as.data.frame(AR1_pvalue_11_20) %>% 
+  rename(kendall_pvalue = kendall_pvalue)
+AR1_11_20<-cbind(AR1_tau_11_20[,2:3],AR1_tau_11_20[,1],AR1_pvalue_11_20[,1])
+colnames(AR1_11_20) <- c('x','y','tau','pvalue')
+
+AR1_tau_00_20 <- as(AR1_tau_00_20, "SpatialPixelsDataFrame")
+AR1_tau_00_20 <- as.data.frame(AR1_tau_00_20) %>% 
+  rename(kendall_coef = lyr.1 )
+AR1_pvalue_00_20 <- as(AR1_pvalue_00_20, "SpatialPixelsDataFrame")
+AR1_pvalue_00_20 <- as.data.frame(AR1_pvalue_00_20) %>% 
+  rename(kendall_pvalue = lyr.2)
+AR1_00_20<-cbind(AR1_tau_00_20[,2:3],AR1_tau_00_20[,1],AR1_pvalue_00_20[,1])
+colnames(AR1_00_20) <- c('x','y','tau','pvalue')
+
+kNDVI_tau_00_10 <- as(kNDVI_tau_00_10, "SpatialPixelsDataFrame")
+kNDVI_tau_00_10 <- as.data.frame(kNDVI_tau_00_10) %>% 
+  rename(kendall_coef = kendall_coef)
+kNDVI_pvalue_00_10 <- as(kNDVI_pvalue_00_10, "SpatialPixelsDataFrame")
+kNDVI_pvalue_00_10 <- as.data.frame(kNDVI_pvalue_00_10) %>% 
+  rename(kendall_pvalue = kendall_pvalue)
+kNDVI_00_10<-cbind(kNDVI_tau_00_10[,2:3],kNDVI_tau_00_10[,1],kNDVI_pvalue_00_10[,1])
+colnames(kNDVI_00_10) <- c('x','y','tau','pvalue')
+
+kNDVI_tau_11_20 <- as(kNDVI_tau_11_20, "SpatialPixelsDataFrame")
+kNDVI_tau_11_20 <- as.data.frame(kNDVI_tau_11_20) %>% 
+  rename(kendall_coef = kendall_coef)
+kNDVI_pvalue_11_20 <- as(kNDVI_pvalue_11_20, "SpatialPixelsDataFrame")
+kNDVI_pvalue_11_20 <- as.data.frame(kNDVI_pvalue_11_20) %>% 
+  rename(kendall_pvalue = kendall_pvalue)
+kNDVI_11_20<-cbind(kNDVI_tau_11_20[,2:3],kNDVI_tau_11_20[,1],kNDVI_pvalue_11_20[,1])
+colnames(kNDVI_11_20) <- c('x','y','tau','pvalue')
+
+kNDVI_tau_00_20 <- as(kNDVI_tau_00_20, "SpatialPixelsDataFrame")
+kNDVI_tau_00_20 <- as.data.frame(kNDVI_tau_00_20) %>% 
+  rename(kendall_coef = lyr.1)
+kNDVI_pvalue_00_20 <- as(kNDVI_pvalue_00_20, "SpatialPixelsDataFrame")
+kNDVI_pvalue_00_20 <- as.data.frame(kNDVI_pvalue_00_20) %>% 
+  rename(kendall_pvalue = lyr.2 )
+kNDVI_00_20<-cbind(kNDVI_tau_00_20[,2:3],kNDVI_tau_00_20[,1],kNDVI_pvalue_00_20[,1])
+colnames(kNDVI_00_20) <- c('x','y','tau','pvalue')
+
+#merge data
+data_00_10<-left_join(kNDVI_00_10,AR1_00_10,by=c("x","y"))
+data_11_20<-left_join(kNDVI_11_20,AR1_11_20,by=c("x","y"))
+data_00_20<-left_join(kNDVI_00_20,AR1_00_20,by=c("x","y"))
+
+#remove insignificant grid cells
+data_00_10<-data_00_10[-which(data_00_10$pvalue.x>0.05|data_00_10$pvalue.y>0.05),]
+data_11_20<-data_11_20[-which(data_11_20$pvalue.x>0.05|data_11_20$pvalue.y>0.05),]
+data_00_20<-data_00_20[-which(data_00_20$pvalue.x>0.05|data_00_20$pvalue.y>0.05),]
+
+
+##==== Draw ====##
+ggplot(data_00_10, mapping = aes(x = tau.x, y = tau.y))+
+  stat_density_2d(aes(fill = ..density..), geom = "raster", contour = FALSE) +
+  scale_fill_distiller(palette=2, direction=1) + #4
+  geom_hline(yintercept = 0,linetype = 'dashed',size = 0.4,color = '#000000')+
+  geom_vline(xintercept = 0,linetype = 'dashed',size = 0.4,color = '#000000')+
+  lims(x = c(-1,1), y = c(-1, 1))+
+  xlab('kNDVI Kentall tau')+
+  ylab('AR1 Kendall tau')+
+  theme_bw()+
+  theme(panel.grid = element_blank(),
+        aspect.ratio = 4/4)
+
+ggplot(data_11_20, mapping = aes(x = tau.x, y = tau.y))+
+  stat_density_2d(aes(fill = ..density..), geom = "raster", contour = FALSE) +
+  scale_fill_distiller(palette=2, direction=1) + #4
+  geom_hline(yintercept = 0,linetype = 'dashed',size = 0.4,color = '#000000')+
+  geom_vline(xintercept = 0,linetype = 'dashed',size = 0.4,color = '#000000')+
+  lims(x = c(-1,1), y = c(-1, 1))+
+  xlab('kNDVI Kentall tau')+
+  ylab('AR1 Kendall tau')+
+  theme_bw()+
+  theme(panel.grid = element_blank(),
+        aspect.ratio = 4/4)
+
+ggplot(data_00_20, mapping = aes(x = tau.x, y = tau.y))+
+  stat_density_2d(aes(fill = ..density..), geom = "raster", contour = FALSE) +
+  scale_fill_distiller(palette=2, direction=1) + #4
+  geom_hline(yintercept = 0,linetype = 'dashed',size = 0.4,color = '#000000')+
+  geom_vline(xintercept = 0,linetype = 'dashed',size = 0.4,color = '#000000')+
+  lims(x = c(-1,1), y = c(-1, 1))+
+  xlab('kNDVI Kentall tau')+
+  ylab('AR1 Kendall tau')+
+  theme_bw()+
+  theme(panel.grid = element_blank(),
+        aspect.ratio = 4/4)
+
+##==== The proportion of pixels in each Quadrant ====##
+length(which(data_00_20$tau.x>=0 & data_00_20$tau.y>=0)) #115303
+length(which(data_00_20$tau.x>=0 & data_00_20$tau.y<0)) #136590
+length(which(data_00_20$tau.x<0 & data_00_20$tau.y>=0)) #1799
+length(which(data_00_20$tau.x<0 & data_00_20$tau.y<0)) #1793
+115303/(115303+136590+1799+1793)
+136590/(115303+136590+1799+1793)
+1799/(115303+136590+1799+1793)
+1793/(115303+136590+1799+1793)
+
+length(which(data_00_10$tau.x>=0 & data_00_10$tau.y>=0)) #51446
+length(which(data_00_10$tau.x>=0 & data_00_10$tau.y<0)) #151347
+length(which(data_00_10$tau.x<0 & data_00_10$tau.y>=0)) #10755
+length(which(data_00_10$tau.x<0 & data_00_10$tau.y<0)) #22617
+51446/(51446+151347+10755+22617)
+151347/(51446+151347+10755+22617)
+10755/(51446+151347+10755+22617)
+22617/(51446+151347+10755+22617)
+
+length(which(data_11_20$tau.x>=0 & data_11_20$tau.y>=0)) #120508
+length(which(data_11_20$tau.x>=0 & data_11_20$tau.y<0)) #102972
+length(which(data_11_20$tau.x<0 & data_11_20$tau.y>=0)) #9225
+length(which(data_11_20$tau.x<0 & data_11_20$tau.y<0)) #11974
+120508/(120508+102972+9225+11974)
+102972/(120508+102972+9225+11974)
+9225/(120508+102972+9225+11974)
+11974/(120508+102972+9225+11974)
+```
+
+## Spatial patterns of vegetation dynamics and resilience (Fig. 2a-f)
+
+```{r}
+##==== prepare data ====##
+AR1_win60_kendall_2000_2010<-rast("E:/Article writing/3 Vegetation greening and resilience/Datasets/1Resilience indicators/AR1_pixel_win60_tw19_2000_2010_kendall_tau.tif")
+AR1_win60_kendall_2011_2020<-rast("E:/Article writing/3 Vegetation greening and resilience/Datasets/1Resilience indicators/AR1_pixel_win60_tw19_2011_2020_kendall_tau.tif")
+AR1_win60_kendall_2000_2020<-rast("E:/Article writing/3 Vegetation greening and resilience/Datasets/1Resilience indicators/AR1_pixel_win60_tw19_2000_2020_kendall_tau.tif")
+
+kNDVI_kendall_00_10<-rast("E:/Article writing/3 Vegetation greening and resilience/Datasets/2Vegetation dynamics/kNDVI_mean_2000_2010_kendall_tau.tif")
+kNDVI_kendall_11_20<-rast("E:/Article writing/3 Vegetation greening and resilience/Datasets/2Vegetation dynamics/kNDVI_mean_2011_2020_kendall_tau.tif")
+kNDVI_kendall_00_20<-rast("E:/Article writing/3 Vegetation greening and resilience/Datasets/2Vegetation dynamics/kNDVI_mean_2000_2020_kendall_tau.tif")
+
+#load vegetation areas to mask kNDVI_trend
+vegetation_land<-raster("E:/Article writing/3 Vegetation greening and resilience/Datasets/3Vegetated land/vegetation_land_unchanged.tif")
+
+#mask by land use data
+AR1_tau_00_10<-mask(raster(AR1_win60_kendall_2000_2010[[1]]),vegetation_land)
+AR1_pvalue_00_10<-mask(raster(AR1_win60_kendall_2000_2010[[2]]),vegetation_land)
+AR1_tau_11_20<-mask(raster(AR1_win60_kendall_2011_2020[[1]]),vegetation_land)
+AR1_pvalue_11_20<-mask(raster(AR1_win60_kendall_2011_2020[[2]]),vegetation_land)
+AR1_tau_00_20<-mask(raster(AR1_win60_kendall_2000_2020[[1]]),vegetation_land)
+AR1_pvalue_00_20<-mask(raster(AR1_win60_kendall_2000_2020[[2]]),vegetation_land)
+
+kNDVI_tau_00_10<-mask(raster(kNDVI_kendall_00_10[[1]]),vegetation_land)
+kNDVI_pvalue_00_10<-mask(raster(kNDVI_kendall_00_10[[2]]),vegetation_land)
+kNDVI_tau_11_20<-mask(raster(kNDVI_kendall_11_20[[1]]),vegetation_land)
+kNDVI_pvalue_11_20<-mask(raster(kNDVI_kendall_11_20[[2]]),vegetation_land)
+kNDVI_tau_00_20<-mask(raster(kNDVI_kendall_00_20[[1]]),vegetation_land)
+kNDVI_pvalue_00_20<-mask(raster(kNDVI_kendall_00_20[[2]]),vegetation_land)
+
+#data transformation
+AR1_tau_00_10 <- as(AR1_tau_00_10, "SpatialPixelsDataFrame")
+AR1_tau_00_10 <- as.data.frame(AR1_tau_00_10) %>% 
+  rename(kendall_coef = kendall_coef)
+AR1_pvalue_00_10 <- as(AR1_pvalue_00_10, "SpatialPixelsDataFrame")
+AR1_pvalue_00_10 <- as.data.frame(AR1_pvalue_00_10) %>% 
+  rename(kendall_pvalue = kendall_pvalue)
+AR1_00_10<-cbind(AR1_tau_00_10[,2:3],AR1_tau_00_10[,1],AR1_pvalue_00_10[,1])
+colnames(AR1_00_10) <- c('x','y','tau','pvalue')
+findset_AR1_00_10<-which(is.na(AR1_00_10$pvalue)|AR1_00_10$pvalue > 0.05)
+AR1_00_10<-AR1_00_10[-findset_AR1_00_10,]
+
+AR1_tau_11_20 <- as(AR1_tau_11_20, "SpatialPixelsDataFrame")
+AR1_tau_11_20 <- as.data.frame(AR1_tau_11_20) %>% 
+  rename(kendall_coef = kendall_coef)
+AR1_pvalue_11_20 <- as(AR1_pvalue_11_20, "SpatialPixelsDataFrame")
+AR1_pvalue_11_20 <- as.data.frame(AR1_pvalue_11_20) %>% 
+  rename(kendall_pvalue = kendall_pvalue)
+AR1_11_20<-cbind(AR1_tau_11_20[,2:3],AR1_tau_11_20[,1],AR1_pvalue_11_20[,1])
+colnames(AR1_11_20) <- c('x','y','tau','pvalue')
+findset_AR1_11_20<-which(is.na(AR1_11_20$pvalue)|AR1_11_20$pvalue > 0.05)
+AR1_11_20<-AR1_11_20[-findset_AR1_11_20,]
+
+AR1_tau_00_20 <- as(AR1_tau_00_20, "SpatialPixelsDataFrame")
+AR1_tau_00_20 <- as.data.frame(AR1_tau_00_20) %>% 
+  rename(kendall_coef = lyr.1 )
+AR1_pvalue_00_20 <- as(AR1_pvalue_00_20, "SpatialPixelsDataFrame")
+AR1_pvalue_00_20 <- as.data.frame(AR1_pvalue_00_20) %>% 
+  rename(kendall_pvalue = lyr.2)
+AR1_00_20<-cbind(AR1_tau_00_20[,2:3],AR1_tau_00_20[,1],AR1_pvalue_00_20[,1])
+colnames(AR1_00_20) <- c('x','y','tau','pvalue')
+findset_AR1_00_20<-which(is.na(AR1_00_20$pvalue)|AR1_00_20$pvalue > 0.05)
+AR1_00_20<-AR1_00_20[-findset_AR1_00_20,]
+
+kNDVI_tau_00_10 <- as(kNDVI_tau_00_10, "SpatialPixelsDataFrame")
+kNDVI_tau_00_10 <- as.data.frame(kNDVI_tau_00_10) %>% 
+  rename(kendall_coef = kendall_coef)
+kNDVI_pvalue_00_10 <- as(kNDVI_pvalue_00_10, "SpatialPixelsDataFrame")
+kNDVI_pvalue_00_10 <- as.data.frame(kNDVI_pvalue_00_10) %>% 
+  rename(kendall_pvalue = kendall_pvalue)
+kNDVI_00_10<-cbind(kNDVI_tau_00_10[,2:3],kNDVI_tau_00_10[,1],kNDVI_pvalue_00_10[,1])
+colnames(kNDVI_00_10) <- c('x','y','tau','pvalue')
+findset_kNDVI_00_10<-which(is.na(kNDVI_00_10$pvalue)|kNDVI_00_10$pvalue > 0.05)
+kNDVI_00_10<-kNDVI_00_10[-findset_kNDVI_00_10,]
+
+kNDVI_tau_11_20 <- as(kNDVI_tau_11_20, "SpatialPixelsDataFrame")
+kNDVI_tau_11_20 <- as.data.frame(kNDVI_tau_11_20) %>% 
+  rename(kendall_coef = kendall_coef)
+kNDVI_pvalue_11_20 <- as(kNDVI_pvalue_11_20, "SpatialPixelsDataFrame")
+kNDVI_pvalue_11_20 <- as.data.frame(kNDVI_pvalue_11_20) %>% 
+  rename(kendall_pvalue = kendall_pvalue)
+kNDVI_11_20<-cbind(kNDVI_tau_11_20[,2:3],kNDVI_tau_11_20[,1],kNDVI_pvalue_11_20[,1])
+colnames(kNDVI_11_20) <- c('x','y','tau','pvalue')
+findset_kNDVI_11_20<-which(is.na(kNDVI_11_20$pvalue)|kNDVI_11_20$pvalue > 0.05)
+kNDVI_11_20<-kNDVI_11_20[-findset_kNDVI_11_20,]
+
+kNDVI_tau_00_20 <- as(kNDVI_tau_00_20, "SpatialPixelsDataFrame")
+kNDVI_tau_00_20 <- as.data.frame(kNDVI_tau_00_20) %>% 
+  rename(kendall_coef = lyr.1)
+kNDVI_pvalue_00_20 <- as(kNDVI_pvalue_00_20, "SpatialPixelsDataFrame")
+kNDVI_pvalue_00_20 <- as.data.frame(kNDVI_pvalue_00_20) %>% 
+  rename(kendall_pvalue = lyr.2 )
+kNDVI_00_20<-cbind(kNDVI_tau_00_20[,2:3],kNDVI_tau_00_20[,1],kNDVI_pvalue_00_20[,1])
+colnames(kNDVI_00_20) <- c('x','y','tau','pvalue')
+findset_kNDVI_00_20<-which(is.na(kNDVI_00_20$pvalue)|kNDVI_00_20$pvalue > 0.05)
+kNDVI_00_20<-kNDVI_00_20[-findset_kNDVI_00_20,]
+##==== prepare data ====##
+
+
+##==== Draw ====##
+crs<-"+proj=aea +lat_0=0 +lon_0=105 +lat_1=25 +lat_2=47 +x_0=4000000 +y_0=0 +datum=WGS84 +units=m +no_defs"
+LP_shape <- readOGR("E:/Article writing/3 Vegetation greening and resilience/Datasets/Shapefile_LP/黄土高原.shp", layer = "黄土高原")
+# fortify, i.e., make ggplot2-compatible
+LP_shape <- fortify(LP_shape)
+
+pretty_breaks <- c(-0.5,0,0.5)
+minVal_kNDVI_00_10 <- min(kNDVI_00_10$tau, na.rm = T)
+maxVal_kNDVI_00_10 <- max(kNDVI_00_10$tau, na.rm = T)
+brks_kNDVI_00_10 <- c(minVal_kNDVI_00_10, pretty_breaks, maxVal_kNDVI_00_10)
+
+minVal_kNDVI_11_20 <- min(kNDVI_11_20$tau, na.rm = T)
+maxVal_kNDVI_11_20 <- max(kNDVI_11_20$tau, na.rm = T)
+brks_kNDVI_11_20 <- c(minVal_kNDVI_11_20, pretty_breaks, maxVal_kNDVI_11_20)
+
+minVal_kNDVI_00_20 <- min(kNDVI_00_20$tau, na.rm = T)
+maxVal_kNDVI_00_20 <- max(kNDVI_00_20$tau, na.rm = T)
+brks_kNDVI_00_20 <- c(minVal_kNDVI_00_20, pretty_breaks, maxVal_kNDVI_00_20)
+
+minVal_AR1_00_10 <- min(AR1_00_10$tau, na.rm = T)
+maxVal_AR1_00_10 <- max(AR1_00_10$tau, na.rm = T)
+brks_AR1_00_10 <- c(minVal_AR1_00_10, pretty_breaks, maxVal_AR1_00_10)
+
+minVal_AR1_11_20 <- min(AR1_11_20$tau, na.rm = T)
+maxVal_AR1_11_20 <- max(AR1_11_20$tau, na.rm = T)
+brks_AR1_11_20 <- c(minVal_AR1_11_20, pretty_breaks, maxVal_AR1_11_20)
+
+minVal_AR1_00_20 <- min(AR1_00_20$tau, na.rm = T)
+maxVal_AR1_00_20 <- max(AR1_00_20$tau, na.rm = T)
+brks_AR1_00_20 <- c(minVal_AR1_00_20, pretty_breaks, maxVal_AR1_00_20)
+
+#cut() function allows you to cut data into bins and specify ‘cut labels’, 
+#so it is beneficial to create a factor from a continuous variable.
+kNDVI_00_10$brks <- cut(kNDVI_00_10$tau, 
+                        breaks = brks_kNDVI_00_10, 
+                        include.lowest = TRUE)
+kNDVI_11_20$brks <- cut(kNDVI_11_20$tau, 
+                        breaks = brks_kNDVI_11_20, 
+                        include.lowest = TRUE)
+kNDVI_00_20$brks <- cut(kNDVI_00_20$tau, 
+                        breaks = brks_kNDVI_00_20, 
+                        include.lowest = TRUE)
+AR1_00_10$brks <- cut(AR1_00_10$tau, 
+                        breaks = brks_AR1_00_10, 
+                        include.lowest = TRUE)
+AR1_11_20$brks <- cut(AR1_11_20$tau, 
+                        breaks = brks_AR1_11_20, 
+                        include.lowest = TRUE)
+AR1_00_20$brks <- cut(AR1_00_20$tau, 
+                        breaks = brks_AR1_00_20, 
+                        include.lowest = TRUE)
+
+my_col_kNDVI <- c("#d01c8b", "#f1b6da", "#b8e186", "#4dac26")
+my_col_AR1 <- c("#018571", "#80cdc1", "#dfc27d", "#a6611a")
+
+map_kNDVI_00_20<-ggplot()+
+  geom_raster(data=kNDVI_00_20,aes(x = x,y = y,fill = brks))+
+  #geom_raster(data=FG_ar1_rwin60_data2_kendall_p_insig,aes(x = x,y = y),fill="white")+
+  scale_fill_manual(values = my_col_kNDVI, name = "slope")+
+  geom_polygon(data=LP_shape,aes(x=long,y=lat,group=id),fill = NA,colour = "black",size = 0.5)+
+  coord_sf(crs=crs)+
+  theme_bw()+
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        #axis.line = element_blank(),
+        panel.background = element_rect(fill = "#f5f5f2", color = NA),
+        panel.border = element_rect(colour = "black",size = 0.5), #element_blank()
+        legend.position = "none",
+        aspect.ratio = 3/4)  #bottom none
+
+map_kNDVI_00_10<-ggplot()+
+  geom_raster(data=kNDVI_00_10,aes(x = x,y = y,fill = brks))+
+  #geom_raster(data=FG_ar1_rwin60_data2_kendall_p_insig,aes(x = x,y = y),fill="white")+
+  scale_fill_manual(values = my_col_kNDVI, name = "slope")+
+  geom_polygon(data=LP_shape,aes(x=long,y=lat,group=id),fill = NA,colour = "black",size = 0.5)+
+  coord_sf(crs=crs)+
+  theme_bw()+
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        #axis.line = element_blank(),
+        panel.background = element_rect(fill = "#f5f5f2", color = NA),
+        panel.border = element_rect(colour = "black",size = 0.5), #element_blank()
+        legend.position = "none",
+        aspect.ratio = 3/4)  #bottom none
+
+map_kNDVI_11_20<-ggplot()+
+  geom_raster(data=kNDVI_11_20,aes(x = x,y = y,fill = brks))+
+  #geom_raster(data=FG_ar1_rwin60_data2_kendall_p_insig,aes(x = x,y = y),fill="white")+
+  scale_fill_manual(values = my_col_kNDVI, name = "slope")+
+  geom_polygon(data=LP_shape,aes(x=long,y=lat,group=id),fill = NA,colour = "black",size = 0.5)+
+  coord_sf(crs=crs)+
+  theme_bw()+
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        #axis.line = element_blank(),
+        panel.background = element_rect(fill = "#f5f5f2", color = NA),
+        panel.border = element_rect(colour = "black",size = 0.5), #element_blank()
+        legend.position = "none",
+        aspect.ratio = 3/4)  #bottom none
+
+map_AR1_00_20<-ggplot()+
+  geom_raster(data=AR1_00_20,aes(x = x,y = y,fill = brks))+
+  #geom_raster(data=FG_ar1_rwin60_data2_kendall_p_insig,aes(x = x,y = y),fill="white")+
+  scale_fill_manual(values = my_col_AR1, name = "slope")+
+  geom_polygon(data=LP_shape,aes(x=long,y=lat,group=id),fill = NA,colour = "black",size = 0.5)+
+  coord_sf(crs=crs)+
+  theme_bw()+
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        #axis.line = element_blank(),
+        panel.background = element_rect(fill = "#f5f5f2", color = NA),
+        panel.border = element_rect(colour = "black",size = 0.5), #element_blank()
+        legend.position = "none",
+        aspect.ratio = 3/4)  #bottom none
+
+map_AR1_00_10<-ggplot()+
+  geom_raster(data=AR1_00_10,aes(x = x,y = y,fill = brks))+
+  #geom_raster(data=FG_ar1_rwin60_data2_kendall_p_insig,aes(x = x,y = y),fill="white")+
+  scale_fill_manual(values = my_col_AR1, name = "slope")+
+  geom_polygon(data=LP_shape,aes(x=long,y=lat,group=id),fill = NA,colour = "black",size = 0.5)+
+  coord_sf(crs=crs)+
+  theme_bw()+
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        #axis.line = element_blank(),
+        panel.background = element_rect(fill = "#f5f5f2", color = NA),
+        panel.border = element_rect(colour = "black",size = 0.5), #element_blank()
+        legend.position = "none",
+        aspect.ratio = 3/4)  #bottom none
+
+map_AR1_11_20<-ggplot()+
+  geom_raster(data=AR1_11_20,aes(x = x,y = y,fill = brks))+
+  #geom_raster(data=FG_ar1_rwin60_data2_kendall_p_insig,aes(x = x,y = y),fill="white")+
+  scale_fill_manual(values = my_col_AR1, name = "slope")+
+  geom_polygon(data=LP_shape,aes(x=long,y=lat,group=id),fill = NA,colour = "black",size = 0.5)+
+  coord_sf(crs=crs)+
+  theme_bw()+
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        #axis.line = element_blank(),
+        panel.background = element_rect(fill = "#f5f5f2", color = NA),
+        panel.border = element_rect(colour = "black",size = 0.5), #element_blank()
+        legend.position = "none",
+        aspect.ratio = 3/4)  #bottom none
+
+ggarrange(map_kNDVI_00_20,map_kNDVI_00_10,map_kNDVI_11_20,
+          map_AR1_00_20,map_AR1_00_10,map_AR1_11_20,
+          nrow=2,ncol = 3,
+          widths=c(0.5,0.5,0.5))
+
+
+##-----pie plot----##
+piedata_kNDVI_00_10<-data.frame(table(kNDVI_00_10$brks))
+piedata_kNDVI_11_20<-data.frame(table(kNDVI_11_20$brks))
+piedata_kNDVI_00_20<-data.frame(table(kNDVI_00_20$brks))
+piedata_AR1_00_10<-data.frame(table(AR1_00_10$brks))
+piedata_AR1_11_20<-data.frame(table(AR1_11_20$brks))
+piedata_AR1_00_20<-data.frame(table(AR1_00_20$brks))
+
+piedata_kNDVI_00_10$Freq/sum(piedata_kNDVI_00_10$Freq)
+piedata_kNDVI_11_20$Freq/sum(piedata_kNDVI_11_20$Freq)
+piedata_kNDVI_00_20$Freq/sum(piedata_kNDVI_00_20$Freq)
+piedata_AR1_00_10$Freq/sum(piedata_AR1_00_10$Freq)
+piedata_AR1_11_20$Freq/sum(piedata_AR1_11_20$Freq)
+piedata_AR1_00_20$Freq/sum(piedata_AR1_00_20$Freq)
+
+pie_kNDVI_00_10<-ggplot()+
+  geom_arc_bar(data=piedata_kNDVI_00_10,
+               stat = "pie",
+               aes(x0=0,y0=0,r0=1,r=2,
+                   amount=Freq,fill=Var1))+
+  scale_colour_viridis_d(direction = -1)+
+  scale_fill_manual(values = my_col_kNDVI, name = "slope")+
+  coord_fixed()+
+  xlab("")+ylab('')+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(), 
+        axis.text.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.title=element_blank(), 
+        panel.border = element_blank(),
+        panel.background = element_blank())
+
+pie_kNDVI_11_20<-ggplot()+
+  geom_arc_bar(data=piedata_kNDVI_11_20,
+               stat = "pie",
+               aes(x0=0,y0=0,r0=1,r=2,
+                   amount=Freq,fill=Var1))+
+  scale_colour_viridis_d(direction = -1)+
+  scale_fill_manual(values = my_col_kNDVI, name = "slope")+
+  coord_fixed()+
+  xlab("")+ylab('')+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(), 
+        axis.text.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.title=element_blank(), 
+        panel.border = element_blank(),
+        panel.background = element_blank())
+
+pie_kNDVI_00_20<-ggplot()+
+  geom_arc_bar(data=piedata_kNDVI_00_20,
+               stat = "pie",
+               aes(x0=0,y0=0,r0=1,r=2,
+                   amount=Freq,fill=Var1))+
+  scale_colour_viridis_d(direction = -1)+
+  scale_fill_manual(values = my_col_kNDVI, name = "slope")+
+  coord_fixed()+
+  xlab("")+ylab('')+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(), 
+        axis.text.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.title=element_blank(), 
+        panel.border = element_blank(),
+        panel.background = element_blank())
+
+pie_AR1_00_10<-ggplot()+
+  geom_arc_bar(data=piedata_AR1_00_10,
+               stat = "pie",
+               aes(x0=0,y0=0,r0=1,r=2,
+                   amount=Freq,fill=Var1))+
+  scale_colour_viridis_d(direction = -1)+
+  scale_fill_manual(values = my_col_AR1, name = "slope")+
+  coord_fixed()+
+  xlab("")+ylab('')+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(), 
+        axis.text.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.title=element_blank(), 
+        panel.border = element_blank(),
+        panel.background = element_blank())
+
+pie_AR1_11_20<-ggplot()+
+  geom_arc_bar(data=piedata_AR1_11_20,
+               stat = "pie",
+               aes(x0=0,y0=0,r0=1,r=2,
+                   amount=Freq,fill=Var1))+
+  scale_colour_viridis_d(direction = -1)+
+  scale_fill_manual(values = my_col_AR1, name = "slope")+
+  coord_fixed()+
+  xlab("")+ylab('')+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(), 
+        axis.text.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.title=element_blank(), 
+        panel.border = element_blank(),
+        panel.background = element_blank())
+
+pie_AR1_00_20<-ggplot()+
+  geom_arc_bar(data=piedata_AR1_00_20,
+               stat = "pie",
+               aes(x0=0,y0=0,r0=1,r=2,
+                   amount=Freq,fill=Var1))+
+  scale_colour_viridis_d(direction = -1)+
+  scale_fill_manual(values = my_col_AR1, name = "slope")+
+  coord_fixed()+
+  xlab("")+ylab('')+
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        axis.ticks = element_blank(), 
+        axis.text.y = element_blank(),
+        axis.text.x = element_blank(),
+        legend.title=element_blank(), 
+        panel.border = element_blank(),
+        panel.background = element_blank())
+
+#library(ggpubr)
+ggarrange(pie_kNDVI_00_20,pie_kNDVI_00_10,pie_kNDVI_11_20,
+          pie_AR1_00_20,pie_AR1_00_10,pie_AR1_11_20,
+          nrow=2,ncol = 3,
+          widths=c(0.5,0.5,0.5))
+```
+
+
+
+## Temporal correlations between vegetation dynamics and resilience (Fig. 3)
+
+```{r}
+load("E:/Article writing/3 Vegetation greening and resilience/Datasets/Influencing factors/时间序列归因分析/cor_AR1_variables_2000_2020.RData")
+load("E:/Article writing/3 Vegetation greening and resilience/Datasets/Influencing factors/时间序列归因分析/cor_AR1_variables_2000_2010.RData")
+load("E:/Article writing/3 Vegetation greening and resilience/Datasets/Influencing factors/时间序列归因分析/cor_AR1_variables_2011_2020.RData")
+
+cor_AR1_kNDVI_2000_2020<-cor_AR1_variables_2000_2020[,1:4]
+cor_AR1_kNDVI_2000_2010<-cor_AR1_variables_2000_2010[,1:4]
+cor_AR1_kNDVI_2011_2020<-cor_AR1_variables_2011_2020[,1:4]
+
+cor_AR1_kNDVI_2000_2020$type<-NA
+cor_AR1_kNDVI_2000_2020[which(cor_AR1_kNDVI_2000_2020$AR1_kNDVI_r>0 & cor_AR1_kNDVI_2000_2020$AR1_kNDVI_p<=0.05),]$type<-1
+cor_AR1_kNDVI_2000_2020[which(cor_AR1_kNDVI_2000_2020$AR1_kNDVI_r<0 & cor_AR1_kNDVI_2000_2020$AR1_kNDVI_p<=0.05),]$type<-2
+cor_AR1_kNDVI_2000_2020[which(cor_AR1_kNDVI_2000_2020$AR1_kNDVI_p>0.05),]$type<-3
+
+cor_AR1_kNDVI_2000_2010$type<-NA
+cor_AR1_kNDVI_2000_2010[which(cor_AR1_kNDVI_2000_2010$AR1_kNDVI_r>0 & cor_AR1_kNDVI_2000_2010$AR1_kNDVI_p<=0.05),]$type<-1
+cor_AR1_kNDVI_2000_2010[which(cor_AR1_kNDVI_2000_2010$AR1_kNDVI_r<0 & cor_AR1_kNDVI_2000_2010$AR1_kNDVI_p<=0.05),]$type<-2
+cor_AR1_kNDVI_2000_2010[which(cor_AR1_kNDVI_2000_2010$AR1_kNDVI_p>0.05),]$type<-3
+
+cor_AR1_kNDVI_2011_2020$type<-NA
+cor_AR1_kNDVI_2011_2020[which(cor_AR1_kNDVI_2011_2020$AR1_kNDVI_r>0 & cor_AR1_kNDVI_2011_2020$AR1_kNDVI_p<=0.05),]$type<-1
+cor_AR1_kNDVI_2011_2020[which(cor_AR1_kNDVI_2011_2020$AR1_kNDVI_r<0 & cor_AR1_kNDVI_2011_2020$AR1_kNDVI_p<=0.05),]$type<-2
+cor_AR1_kNDVI_2011_2020[which(cor_AR1_kNDVI_2011_2020$AR1_kNDVI_p>0.05),]$type<-3
+
+crs<-"+proj=aea +lat_0=0 +lon_0=105 +lat_1=25 +lat_2=47 +x_0=4000000 +y_0=0 +datum=WGS84 +units=m +no_defs"
+LP_shape <- readOGR("E:/Article writing/3 Vegetation greening and resilience/Datasets/Shapefile_LP/黄土高原.shp", layer = "黄土高原")
+# fortify, i.e., make ggplot2-compatible
+LP_shape <- fortify(LP_shape)
+my_col_type<-c("#E21A1C", "#1F78B4","#ffffbf")
+
+
+ggplot()+
+  geom_raster(data=cor_AR1_kNDVI_2000_2010,aes(x = x,y = y,fill = factor(type)))+
+  scale_fill_manual(values = my_col_type, name = "type")+
+  geom_polygon(data=LP_shape,aes(x=long,y=lat,group=id),fill = NA,colour = "black",size = 0.5)+
+  coord_sf(crs=crs)+
+  theme_bw()+
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        #axis.line = element_blank(),
+        panel.background = element_rect(fill = "#f5f5f2", color = NA),
+        panel.border = element_rect(colour = "black",size = 0.5), #element_blank()
+        legend.position = "bottom",
+        aspect.ratio = 3/4)  #bottom none
+
+ggplot()+
+  geom_raster(data=cor_AR1_kNDVI_2011_2020,aes(x = x,y = y,fill = factor(type)))+
+  scale_fill_manual(values = my_col_type, name = "type")+
+  geom_polygon(data=LP_shape,aes(x=long,y=lat,group=id),fill = NA,colour = "black",size = 0.5)+
+  coord_sf(crs=crs)+
+  theme_bw()+
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        #axis.line = element_blank(),
+        panel.background = element_rect(fill = "#f5f5f2", color = NA),
+        panel.border = element_rect(colour = "black",size = 0.5), #element_blank()
+        legend.position = "bottom",
+        aspect.ratio = 3/4)  #bottom none
+
+ggplot()+
+  geom_raster(data=cor_AR1_kNDVI_2000_2020,aes(x = x,y = y,fill = factor(type)))+
+  scale_fill_manual(values = my_col_type, name = "type")+
+  geom_polygon(data=LP_shape,aes(x=long,y=lat,group=id),fill = NA,colour = "black",size = 0.5)+
+  coord_sf(crs=crs)+
+  theme_bw()+
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        #axis.line = element_blank(),
+        panel.background = element_rect(fill = "#f5f5f2", color = NA),
+        panel.border = element_rect(colour = "black",size = 0.5), #element_blank()
+        legend.position = "bottom",
+        aspect.ratio = 3/4)  #bottom none
+
+
+#stacked bar plot
+data_00_20<-data.frame(table(cor_AR1_kNDVI_2000_2020$type))
+data_00_10<-data.frame(table(cor_AR1_kNDVI_2000_2010$type))
+data_11_20<-data.frame(table(cor_AR1_kNDVI_2011_2020$type))
+
+all_data<-cbind(data_00_10[,1:2],data_11_20[,2],data_00_20[,2])
+all_data<-all_data %>% rename(F2000_2010=Freq,F2011_2020='data_11_20[, 2]',F2000_2020='data_00_20[, 2]')
+all_data$Var1<-as.character(all_data$Var1)
+
+#convert data from wider to longer
+all_data<-all_data %>% pivot_longer(.,-1,names_to = "periods",values_to = "Freq") 
+#Change the order labels/ticks in the x-axis
+all_data$periods <- factor(all_data$periods,levels = c("F2000_2020","F2000_2010","F2011_2020"))
+all_data$Var1 <- factor(all_data$Var1,levels = c("1","2","3"))
+
+#Vertical
+ggplot(data=all_data,aes(periods,Freq,fill=Var1))+  
+  geom_bar(stat="identity", position="fill",color="black", width=0.8,size=0.25)+
+  scale_color_npg()+
+  scale_fill_manual(values = my_col_type, name = "type")+
+  xlab("Periods") + ylab("Frequency (%)")+  
+  theme_custom()+
+  theme(aspect.ratio = 6/2)
+
+
+#Horizontal
+ggplot(data=all_data,aes(periods,Freq,fill=Var1))+  
+  geom_bar(stat="identity", position="fill",color="black", width=0.8,size=0.25)+
+  coord_flip()+
+  scale_fill_manual(values = my_col_type, name = "type")+
+  xlab("Periods") + ylab("Frequency (%)")+  
+  theme_custom()+
+  theme(aspect.ratio = 2/6)
+
+
+```
+
+## Changes in vegetation resilience along gradients of climatic factors (Fig. 4)
+
+```{r}
+#load climatic factors
+pre<-raster("E:/Article writing/3 Vegetation greening and resilience/Datasets/Mean climatic factors/pre_2000_2020_mean_LP.tif")
+tem<-raster("E:/Article writing/3 Vegetation greening and resilience/Datasets/Mean climatic factors/tem_2000_2020_mean_LP.tif")
+precv<-raster("E:/Article writing/3 Vegetation greening and resilience/Datasets/Mean climatic factors/precv_2000_2020_mean_LP.tif")
+temcv<-raster("E:/Article writing/3 Vegetation greening and resilience/Datasets/Mean climatic factors/temcv_2000_2020_mean_LP.tif")
+pet<-raster("E:/Article writing/3 Vegetation greening and resilience/Datasets/Mean climatic factors/pet_2000_2020_mean_LP.tif")
+ai<-raster("E:/Article writing/3 Vegetation greening and resilience/Datasets/Mean climatic factors/ai_2000_2020_mean_LP.tif")
+
+#load AR(1) kendall tau 2000-2010 and 2011-2020
+AR1_win60_kendall_2000_2010<-rast("E:/Article writing/3 Vegetation greening and resilience/Datasets/1Resilience indicators/AR1_pixel_win60_tw19_2000_2010_kendall_tau.tif")
+AR1_win60_kendall_2011_2020<-rast("E:/Article writing/3 Vegetation greening and resilience/Datasets/1Resilience indicators/AR1_pixel_win60_tw19_2011_2020_kendall_tau.tif")
+AR1_win60_kendall_2000_2010<-stack(AR1_win60_kendall_2000_2010)
+AR1_win60_kendall_2011_2020<-stack(AR1_win60_kendall_2011_2020)
+
+all_raster<-stack(AR1_win60_kendall_2000_2010,AR1_win60_kendall_2011_2020,pre,tem,precv,temcv,pet,ai)
+
+#load vegetation areas used to mask
+vegetation_land<-raster("E:/Article writing/3 Vegetation greening and resilience/Datasets/Land_use_types/6 LP scope/vegetation_land_unchanged.tif")
+all_raster<-mask(all_raster,vegetation_land)
+
+#data transformation
+all_data<-as(all_raster,"SpatialPixelsDataFrame") %>% as.data.frame()
+colnames(all_data)<-c("tau_00_10","pvalue_00_10","tau_11_20","pvalue_11_20","pre","tem","precv","temcv","pet","ai","x","y")
+
+all_data[which(all_data$pvalue_00_10 > 0.05),1]<-NA
+all_data[which(all_data$pvalue_11_20 > 0.05),3]<-NA
+
+pre_data<-all_data[,c(1,3,5)]
+tem_data<-all_data[,c(1,3,6)]
+precv_data<-all_data[,c(1,3,7)]
+temcv_data<-all_data[,c(1,3,8)]
+pet_data<-all_data[,c(1,3,9)]
+ai_data<-all_data[,c(1,3,10)]
+
+pre_data$pre_group<-cut(pre_data$pre,200) 
+tem_data$tem_group<-cut(tem_data$tem,200)
+precv_data$precv_group<-cut(precv_data$precv,200)
+temcv_data$temcv_group<-cut(temcv_data$temcv,200)
+pet_data$pet_group<-cut(pet_data$pet,200)
+ai_data$ai_group<-cut(ai_data$ai,200)
+
+
+#pre_data
+pre_tau_00_10<-aggregate(pre_data$tau_00_10, list(pre_data$pre_group), median, na.rm=TRUE)
+pre_length_00_10<-aggregate(pre_data$tau_00_10, list(pre_data$pre_group), length)
+pre_tau_11_20<-aggregate(pre_data$tau_11_20, list(pre_data$pre_group), median, na.rm=TRUE)
+pre_length_11_20<-aggregate(pre_data$tau_11_20, list(pre_data$pre_group), length)
+#tem_data
+tem_tau_00_10<-aggregate(tem_data$tau_00_10, list(tem_data$tem_group), median, na.rm=TRUE)
+tem_length_00_10<-aggregate(tem_data$tau_00_10, list(tem_data$tem_group), length)
+tem_tau_11_20<-aggregate(tem_data$tau_11_20, list(tem_data$tem_group), median, na.rm=TRUE)
+tem_length_11_20<-aggregate(tem_data$tau_11_20, list(tem_data$tem_group), length)
+#precv data
+precv_tau_00_10<-aggregate(precv_data$tau_00_10, list(precv_data$precv_group), median, na.rm=TRUE)
+precv_length_00_10<-aggregate(precv_data$tau_00_10, list(precv_data$precv_group), length)
+precv_tau_11_20<-aggregate(precv_data$tau_11_20, list(precv_data$precv_group), median, na.rm=TRUE)
+precv_length_11_20<-aggregate(precv_data$tau_11_20, list(precv_data$precv_group), length)
+#temcv data
+temcv_tau_00_10<-aggregate(temcv_data$tau_00_10, list(temcv_data$temcv_group), median, na.rm=TRUE)
+temcv_length_00_10<-aggregate(temcv_data$tau_00_10, list(temcv_data$temcv_group), length)
+temcv_tau_11_20<-aggregate(temcv_data$tau_11_20, list(temcv_data$temcv_group), median, na.rm=TRUE)
+temcv_length_11_20<-aggregate(temcv_data$tau_11_20, list(temcv_data$temcv_group), length)
+#pet data
+pet_tau_00_10<-aggregate(pet_data$tau_00_10, list(pet_data$pet_group), median, na.rm=TRUE)
+pet_length_00_10<-aggregate(pet_data$tau_00_10, list(pet_data$pet_group), length)
+pet_tau_11_20<-aggregate(pet_data$tau_11_20, list(pet_data$pet_group), median, na.rm=TRUE)
+pet_length_11_20<-aggregate(pet_data$tau_11_20, list(pet_data$pet_group), length)
+#ai data
+ai_tau_00_10<-aggregate(ai_data$tau_00_10, list(ai_data$ai_group), median, na.rm=TRUE)
+ai_length_00_10<-aggregate(ai_data$tau_00_10, list(ai_data$ai_group), length)
+ai_tau_11_20<-aggregate(ai_data$tau_11_20, list(ai_data$ai_group), median, na.rm=TRUE)
+ai_length_11_20<-aggregate(ai_data$tau_11_20, list(ai_data$ai_group), length)
+
+#cbind
+pre_data<-cbind(tau1=pre_tau_00_10,tau2=pre_tau_11_20[,2],length1=pre_length_00_10[,2],lengh2=pre_length_11_20[,2])
+tem_data<-cbind(tau1=tem_tau_00_10,tau2=tem_tau_11_20[,2],length1=tem_length_00_10[,2],lengh2=tem_length_11_20[,2])
+precv_data<-cbind(tau1=precv_tau_00_10,tau2=precv_tau_11_20[,2],length1=precv_length_00_10[,2],lengh2=precv_length_11_20[,2])
+temcv_data<-cbind(tau1=temcv_tau_00_10,tau2=temcv_tau_11_20[,2],length1=temcv_length_00_10[,2],lengh2=temcv_length_11_20[,2])
+pet_data<-cbind(tau1=pet_tau_00_10,tau2=pet_tau_11_20[,2],length1=pet_length_00_10[,2],lengh2=pet_length_11_20[,2])
+ai_data<-cbind(tau1=ai_tau_00_10,tau2=ai_tau_11_20[,2],length1=ai_length_00_10[,2],lengh2=ai_length_11_20[,2])
+
+#climatic gredient lable
+pre_data$tau1.Group.1<-as.character(pre_data$tau1.Group.1)
+tem_data$tau1.Group.1<-as.character(tem_data$tau1.Group.1)
+precv_data$tau1.Group.1<-as.character(precv_data$tau1.Group.1)
+temcv_data$tau1.Group.1<-as.character(temcv_data$tau1.Group.1)
+pet_data$tau1.Group.1<-as.character(pet_data$tau1.Group.1)
+ai_data$tau1.Group.1<-as.character(ai_data$tau1.Group.1)
+
+pre_lable<-strsplit(pre_data$tau1.Group.1, ",", fixed= T)
+tem_lable<-strsplit(tem_data$tau1.Group.1, ",", fixed= T)
+precv_lable<-strsplit(precv_data$tau1.Group.1, ",", fixed= T)
+temcv_lable<-strsplit(temcv_data$tau1.Group.1, ",", fixed= T)
+pet_lable<-strsplit(pet_data$tau1.Group.1, ",", fixed= T)
+ai_lable<-strsplit(ai_data$tau1.Group.1, ",", fixed= T)
+
+pre_lable<-data.frame(t(as.data.frame(pre_lable)))
+tem_lable<-data.frame(t(as.data.frame(tem_lable)))
+precv_lable<-data.frame(t(as.data.frame(precv_lable)))
+temcv_lable<-data.frame(t(as.data.frame(temcv_lable)))
+pet_lable<-data.frame(t(as.data.frame(pet_lable)))
+ai_lable<-data.frame(t(as.data.frame(ai_lable)))
+
+library(stringr)
+pre_label2<-str_sub(pre_lable$X2, end = -2)
+tem_label2<-str_sub(tem_lable$X2, end = -2)
+precv_label2<-str_sub(precv_lable$X2, end = -2)
+temcv_label2<-str_sub(temcv_lable$X2, end = -2)
+pet_label2<-str_sub(pet_lable$X2, end = -2)
+ai_label2<-str_sub(ai_lable$X2, end = -2)
+
+pre_data$lable2<-as.numeric(pre_label2)
+tem_data$lable2<-as.numeric(tem_label2)
+precv_data$lable2<-as.numeric(precv_label2)
+temcv_data$lable2<-as.numeric(temcv_label2)
+pet_data$lable2<-as.numeric(pet_label2)
+ai_data$lable2<-as.numeric(ai_label2)
+
+ggplot(pre_data,aes(x=lable2))+
+  geom_rect(aes(xmin=min(pre_data$lable2), xmax=max(pre_data$lable2), 
+                ymin=-Inf, ymax=Inf),fill='#f5f5f2',alpha = .9)+ 
+  geom_area(aes(y=tau1.x),fill = "#0A6A62",alpha = 0.6)+
+  geom_area(aes(y=tau2),fill = "#925710",alpha = 0.6)+
+  scale_y_continuous(
+                     
+                     name="AR(1) Kendall tau",
+                     sec.axis = sec_axis(~. *1000,
+                                         name="Area")
+                     )+
+  geom_line(mapping=aes(y=length1/10000),size=0.8,color="red")+
+  theme_custom()+
+  theme(aspect.ratio = 4/4.5)
+
+ggplot(tem_data,aes(x=lable2))+
+  geom_rect(aes(xmin=min(tem_data$lable2), xmax=max(tem_data$lable2), 
+                ymin=-Inf, ymax=Inf),fill='#f5f5f2',alpha = .9)+ 
+  geom_area(aes(y=tau1.x),fill = "#0A6A62",alpha = 0.6)+
+  geom_area(aes(y=tau2),fill = "#925710",alpha = 0.6)+
+  scale_y_continuous(
+                     
+                     name="AR(1) Kendall tau",
+                     sec.axis = sec_axis(~. *1000,
+                                         name="Area")
+                     )+
+  geom_line(mapping=aes(y=length1/10000),size=0.8,color="red")+
+  theme_custom()+
+  theme(aspect.ratio = 4/4.5)
+  
+
+ggplot(precv_data,aes(x=lable2))+
+  geom_rect(aes(xmin=min(precv_data$lable2), xmax=max(precv_data$lable2), 
+                ymin=-Inf, ymax=Inf),fill='#f5f5f2',alpha = .9)+ 
+  geom_area(aes(y=tau1.x),fill = "#0A6A62",alpha = 0.6)+
+  geom_area(aes(y=tau2),fill = "#925710",alpha = 0.6)+
+  scale_y_continuous(
+                     
+                     name="AR(1) Kendall tau",
+                     sec.axis = sec_axis(~. *1000,
+                                         name="Area")
+                     )+
+  geom_line(mapping=aes(y=length1/10000),size=0.8,color="red")+
+  theme_custom()+
+  theme(aspect.ratio = 4/4.5)  
+  
+  
+ggplot(temcv_data,aes(x=lable2))+
+  geom_rect(aes(xmin=min(temcv_data$lable2), xmax=max(temcv_data$lable2), 
+                ymin=-Inf, ymax=Inf),fill='#f5f5f2',alpha = .9)+ 
+  geom_area(aes(y=tau1.x),fill = "#0A6A62",alpha = 0.6)+
+  geom_area(aes(y=tau2),fill = "#925710",alpha = 0.6)+
+  scale_y_continuous(
+                     
+                     name="AR(1) Kendall tau",
+                     sec.axis = sec_axis(~. *1000,
+                                         name="Area")
+                     )+
+  geom_line(mapping=aes(y=length1/100000),size=0.8,color="red")+
+  theme_custom()+
+  theme(aspect.ratio = 4/4.5)    
+  
+ggplot(pet_data,aes(x=lable2))+
+  geom_rect(aes(xmin=min(pet_data$lable2), xmax=max(pet_data$lable2), 
+                ymin=-Inf, ymax=Inf),fill='#f5f5f2',alpha = .9)+ 
+  geom_area(aes(y=tau1.x),fill = "#0A6A62",alpha = 0.6)+
+  geom_area(aes(y=tau2),fill = "#925710",alpha = 0.6)+
+  scale_y_continuous(
+                     
+                     name="AR(1) Kendall tau",
+                     sec.axis = sec_axis(~. *1000,
+                                         name="Area")
+                     )+
+  geom_line(mapping=aes(y=length1/10000),size=0.8,color="red")+
+  theme_custom()+
+  theme(aspect.ratio = 4/4.5)     
+
+
+ggplot(ai_data,aes(x=lable2))+
+  geom_rect(aes(xmin=min(ai_data$lable2), xmax=max(ai_data$lable2), 
+                ymin=-Inf, ymax=Inf),fill='#f5f5f2',alpha = .9)+ 
+  geom_rect(aes(xmin=0.2, xmax=0.5, 
+                ymin=-Inf, ymax=Inf),fill='grey80',alpha = .9)+
+  geom_rect(aes(xmin=0.5, xmax=0.65, 
+                ymin=-Inf, ymax=Inf),fill='grey50',alpha = .9)+
+
+  geom_area(aes(y=tau1.x),fill = "#0A6A62",alpha = 0.6)+
+  geom_area(aes(y=tau2),fill = "#925710",alpha = 0.6)+
+  scale_y_continuous(
+                     
+                     name="AR(1) Kendall tau",
+                     sec.axis = sec_axis(~. *1000,
+                                         name="Area")
+                     )+
+  geom_line(mapping=aes(y=length1/10000),size=0.8,color="red")+
+  theme_custom()+
+  theme(aspect.ratio = 4/4.5) 
+```
+
+## Relative importance of climatic factors and their effects on vegetation resilience
+
+### Regression coefficients in 2000-2010 (Fig. 5a left)
+
+```{r}
+library(ggplot2)
+library(gghalves)
+library(ggsci)
+
+load("./mlm_AR1_variables_2000_2010.RData")
+
+coef_AR1_premean_2000_2010<-mlm_AR1_variables_2000_2010[,3:4]
+coef_AR1_precv_2000_2010<-mlm_AR1_variables_2000_2010[,6:7]
+coef_AR1_temmean_2000_2010<-mlm_AR1_variables_2000_2010[,9:10]
+coef_AR1_temcv_2000_2010<-mlm_AR1_variables_2000_2010[,12:13]
+coef_AR1_petmean_2000_2010<-mlm_AR1_variables_2000_2010[,15:16]
+coef_AR1_aimean_2000_2010<-mlm_AR1_variables_2000_2010[,18:19]
+
+rel_AR1_premean_2000_2010<-mlm_AR1_variables_2000_2010[,4:5]
+rel_AR1_precv_2000_2010<-mlm_AR1_variables_2000_2010[,7:8]
+rel_AR1_temmean_2000_2010<-mlm_AR1_variables_2000_2010[,10:11]
+rel_AR1_temcv_2000_2010<-mlm_AR1_variables_2000_2010[,13:14]
+rel_AR1_petmean_2000_2010<-mlm_AR1_variables_2000_2010[,16:17]
+rel_AR1_aimean_2000_2010<-mlm_AR1_variables_2000_2010[,19:20]
+
+#remove the non-significant grids
+coef_AR1_premean_sig_2000_2010<-coef_AR1_premean_2000_2010[-which(coef_AR1_premean_2000_2010$premean_p > 0.05|is.na(coef_AR1_premean_2000_2010$premean_p)),]
+coef_AR1_precv_sig_2000_2010<-coef_AR1_precv_2000_2010[-which(coef_AR1_precv_2000_2010$precv_p > 0.05|is.na(coef_AR1_precv_2000_2010$precv_p)),]
+coef_AR1_temmean_sig_2000_2010<-coef_AR1_temmean_2000_2010[-which(coef_AR1_temmean_2000_2010$temmean_p > 0.05|is.na(coef_AR1_temmean_2000_2010$temmean_p)),]
+coef_AR1_temcv_sig_2000_2010<-coef_AR1_temcv_2000_2010[-which(coef_AR1_temcv_2000_2010$temcv_p > 0.05|is.na(coef_AR1_temcv_2000_2010$temcv_p)),]
+coef_AR1_petmean_sig_2000_2010<-coef_AR1_petmean_2000_2010[-which(coef_AR1_petmean_2000_2010$petmean_p > 0.05|is.na(coef_AR1_petmean_2000_2010$petmean_p)),]
+coef_AR1_aimean_sig_2000_2010<-coef_AR1_aimean_2000_2010[-which(coef_AR1_aimean_2000_2010$aimean_p > 0.05|is.na(coef_AR1_aimean_2000_2010$aimean_p)),]
+
+
+rel_AR1_premean_sig_2000_2010<-rel_AR1_premean_2000_2010[-which(rel_AR1_premean_2000_2010$premean_p > 0.05|is.na(rel_AR1_premean_2000_2010$premean_p)),]
+rel_AR1_precv_sig_2000_2010<-rel_AR1_precv_2000_2010[-which(rel_AR1_precv_2000_2010$precv_p > 0.05|is.na(rel_AR1_precv_2000_2010$precv_p)),]
+rel_AR1_temmean_sig_2000_2010<-rel_AR1_temmean_2000_2010[-which(rel_AR1_temmean_2000_2010$temmean_p > 0.05|is.na(rel_AR1_temmean_2000_2010$temmean_p)),]
+rel_AR1_temcv_sig_2000_2010<-rel_AR1_temcv_2000_2010[-which(rel_AR1_temcv_2000_2010$temcv_p > 0.05|is.na(rel_AR1_temcv_2000_2010$temcv_p)),]
+rel_AR1_petmean_sig_2000_2010<-rel_AR1_petmean_2000_2010[-which(rel_AR1_petmean_2000_2010$petmean_p > 0.05|is.na(rel_AR1_petmean_2000_2010$petmean_p)),]
+rel_AR1_aimean_sig_2000_2010<-rel_AR1_aimean_2000_2010[-which(rel_AR1_aimean_2000_2010$aimean_p > 0.05|is.na(rel_AR1_aimean_2000_2010$aimean_p)),]
+
+
+colnames(coef_AR1_premean_sig_2000_2010)<-c("coef","p_value")
+colnames(coef_AR1_precv_sig_2000_2010)<-c("coef","p_value")
+colnames(coef_AR1_temmean_sig_2000_2010)<-c("coef","p_value")
+colnames(coef_AR1_temcv_sig_2000_2010)<-c("coef","p_value")
+colnames(coef_AR1_petmean_sig_2000_2010)<-c("coef","p_value")
+colnames(coef_AR1_aimean_sig_2000_2010)<-c("coef","p_value")
+
+
+colnames(rel_AR1_premean_sig_2000_2010)<-c("p_value","rel")
+colnames(rel_AR1_precv_sig_2000_2010)<-c("p_value","rel")
+colnames(rel_AR1_temmean_sig_2000_2010)<-c("p_value","rel")
+colnames(rel_AR1_temcv_sig_2000_2010)<-c("p_value","rel")
+colnames(rel_AR1_petmean_sig_2000_2010)<-c("p_value","rel")
+colnames(rel_AR1_aimean_sig_2000_2010)<-c("p_value","rel")
+
+
+coef_AR1_premean_sig_2000_2010$variable<-rep("AR1_premean",nrow(coef_AR1_premean_sig_2000_2010))
+coef_AR1_precv_sig_2000_2010$variable<-rep("AR1_precv",nrow(coef_AR1_precv_sig_2000_2010))
+coef_AR1_temmean_sig_2000_2010$variable<-rep("AR1_temmean",nrow(coef_AR1_temmean_sig_2000_2010))
+coef_AR1_temcv_sig_2000_2010$variable<-rep("AR1_temcv",nrow(coef_AR1_temcv_sig_2000_2010))
+coef_AR1_petmean_sig_2000_2010$variable<-rep("AR1_petmean",nrow(coef_AR1_petmean_sig_2000_2010))
+coef_AR1_aimean_sig_2000_2010$variable<-rep("AR1_aimean",nrow(coef_AR1_aimean_sig_2000_2010))
+
+
+rel_AR1_premean_sig_2000_2010$variable<-rep("AR1_premean",nrow(rel_AR1_premean_sig_2000_2010))
+rel_AR1_precv_sig_2000_2010$variable<-rep("AR1_precv",nrow(rel_AR1_precv_sig_2000_2010))
+rel_AR1_temmean_sig_2000_2010$variable<-rep("AR1_temmean",nrow(rel_AR1_temmean_sig_2000_2010))
+rel_AR1_temcv_sig_2000_2010$variable<-rep("AR1_temcv",nrow(rel_AR1_temcv_sig_2000_2010))
+rel_AR1_petmean_sig_2000_2010$variable<-rep("AR1_petmean",nrow(rel_AR1_petmean_sig_2000_2010))
+rel_AR1_aimean_sig_2000_2010$variable<-rep("AR1_aimean",nrow(rel_AR1_aimean_sig_2000_2010))
+
+#Remove below 5% and above 95%
+
+coef_premean_quan<-quantile(coef_AR1_premean_sig_2000_2010$coef,c(0.05,0.95))
+coef_precv_quan<-quantile(coef_AR1_precv_sig_2000_2010$coef,c(0.05,0.95))
+coef_temmen_quan<-quantile(coef_AR1_temmean_sig_2000_2010$coef,c(0.05,0.95))
+coef_temcv_quan<-quantile(coef_AR1_temcv_sig_2000_2010$coef,c(0.05,0.95))
+coef_petmean_quan<-quantile(coef_AR1_petmean_sig_2000_2010$coef,c(0.05,0.95))
+coef_aimean_quan<-quantile(coef_AR1_aimean_sig_2000_2010$coef,c(0.05,0.95))
+
+
+rel_premean_quan<-quantile(rel_AR1_premean_sig_2000_2010$rel,c(0.05,0.95))
+rel_precv_quan<-quantile(rel_AR1_precv_sig_2000_2010$rel,c(0.05,0.95))
+rel_temmen_quan<-quantile(rel_AR1_temmean_sig_2000_2010$rel,c(0.05,0.95))
+rel_temcv_quan<-quantile(rel_AR1_temcv_sig_2000_2010$rel,c(0.05,0.95))
+rel_petmean_quan<-quantile(rel_AR1_petmean_sig_2000_2010$rel,c(0.05,0.95))
+rel_aimean_quan<-quantile(rel_AR1_aimean_sig_2000_2010$rel,c(0.05,0.95))
+
+
+coef_AR1_premean_sig_2000_2010<-coef_AR1_premean_sig_2000_2010[-which(coef_AR1_premean_sig_2000_2010$coef<coef_premean_quan[1]|coef_AR1_premean_sig_2000_2010$coef>coef_premean_quan[2]),]
+coef_AR1_precv_sig_2000_2010<-coef_AR1_precv_sig_2000_2010[-which(coef_AR1_precv_sig_2000_2010$coef<coef_precv_quan[1]|coef_AR1_precv_sig_2000_2010$coef>coef_precv_quan[2]),]
+coef_AR1_temmean_sig_2000_2010<-coef_AR1_temmean_sig_2000_2010[-which(coef_AR1_temmean_sig_2000_2010$coef<coef_temmen_quan[1]|coef_AR1_temmean_sig_2000_2010$coef>coef_temmen_quan[2]),]
+coef_AR1_temcv_sig_2000_2010<-coef_AR1_temcv_sig_2000_2010[-which(coef_AR1_temcv_sig_2000_2010$coef<coef_temcv_quan[1]|coef_AR1_temcv_sig_2000_2010$coef>coef_temcv_quan[2]),]
+coef_AR1_petmean_sig_2000_2010<-coef_AR1_petmean_sig_2000_2010[-which(coef_AR1_petmean_sig_2000_2010$coef<coef_petmean_quan[1]|coef_AR1_petmean_sig_2000_2010$coef>coef_petmean_quan[2]),]
+coef_AR1_aimean_sig_2000_2010<-coef_AR1_aimean_sig_2000_2010[-which(coef_AR1_aimean_sig_2000_2010$coef<coef_aimean_quan[1]|coef_AR1_aimean_sig_2000_2010$coef>coef_aimean_quan[2]),]
+
+
+rel_AR1_premean_sig_2000_2010<-rel_AR1_premean_sig_2000_2010[-which(rel_AR1_premean_sig_2000_2010$rel<rel_premean_quan[1]|rel_AR1_premean_sig_2000_2010$rel>rel_premean_quan[2]),]
+rel_AR1_precv_sig_2000_2010<-rel_AR1_precv_sig_2000_2010[-which(rel_AR1_precv_sig_2000_2010$rel<rel_precv_quan[1]|rel_AR1_precv_sig_2000_2010$rel>rel_precv_quan[2]),]
+rel_AR1_temmean_sig_2000_2010<-rel_AR1_temmean_sig_2000_2010[-which(rel_AR1_temmean_sig_2000_2010$rel<rel_temmen_quan[1]|rel_AR1_temmean_sig_2000_2010$rel>rel_temmen_quan[2]),]
+rel_AR1_temcv_sig_2000_2010<-rel_AR1_temcv_sig_2000_2010[-which(rel_AR1_temcv_sig_2000_2010$rel<rel_temcv_quan[1]|rel_AR1_temcv_sig_2000_2010$rel>rel_temcv_quan[2]),]
+rel_AR1_petmean_sig_2000_2010<-rel_AR1_petmean_sig_2000_2010[-which(rel_AR1_petmean_sig_2000_2010$rel<rel_petmean_quan[1]|rel_AR1_petmean_sig_2000_2010$rel>rel_petmean_quan[2]),]
+rel_AR1_aimean_sig_2000_2010<-rel_AR1_aimean_sig_2000_2010[-which(rel_AR1_aimean_sig_2000_2010$rel<rel_aimean_quan[1]|rel_AR1_aimean_sig_2000_2010$rel>rel_aimean_quan[2]),]
+
+
+coef_00_10<-rbind(coef_AR1_premean_sig_2000_2010,coef_AR1_precv_sig_2000_2010,coef_AR1_temmean_sig_2000_2010,coef_AR1_temcv_sig_2000_2010,coef_AR1_petmean_sig_2000_2010,coef_AR1_aimean_sig_2000_2010)
+#rm(coef_AR1_premean_sig_2000_2010,coef_AR1_precv_sig_2000_2010,coef_AR1_temmean_sig_2000_2010,coef_AR1_temcv_sig_2000_2010,coef_AR1_petmean_sig_2000_2010,coef_AR1_aimean_sig_2000_2010)
+
+rel_00_10<-rbind(rel_AR1_premean_sig_2000_2010,rel_AR1_precv_sig_2000_2010,rel_AR1_temmean_sig_2000_2010,rel_AR1_temcv_sig_2000_2010,rel_AR1_petmean_sig_2000_2010,rel_AR1_aimean_sig_2000_2010)
+rm(rel_AR1_premean_sig_2000_2010,rel_AR1_precv_sig_2000_2010,rel_AR1_temmean_sig_2000_2010,rel_AR1_temcv_sig_2000_2010,rel_AR1_petmean_sig_2000_2010,rel_AR1_aimean_sig_2000_2010)
+
+
+coef_00_10$variable <- factor(coef_00_10$variable,levels=c("AR1_aimean",
+                                                           "AR1_petmean",
+                                                           "AR1_temcv",
+                                                           "AR1_precv",
+                                                           "AR1_temmean",
+                                                           "AR1_premean"
+                                                        ))
+rel_00_10$variable <- factor(rel_00_10$variable,levels=c("AR1_aimean",
+                                                           "AR1_petmean",
+                                                           "AR1_temcv",
+                                                           "AR1_precv",
+                                                           "AR1_temmean",
+                                                           "AR1_premean"
+                                                         ))
+
+
+
+ggplot(coef_00_10,aes(variable,coef,fill = variable)) +
+  geom_half_violin(stat = "half_ydensity",trim=FALSE,side = "r")+ 
+  geom_half_boxplot(width = 0.15,outlier.shape = NA,fill="white")+ 
+  scale_fill_jama(alpha = 0.8)+
+  coord_flip()+  
+  geom_hline(yintercept = 0,linetype = 'dashed',color = '#000000',size = 0.4)+
+  theme_bw()+
+  theme(legend.position = "none",
+        aspect.ratio = 7/4)
+
+ggplot(rel_00_10,aes(variable,rel,fill = variable)) +
+  geom_half_violin(stat = "half_ydensity",trim=FALSE,side = "r")+ 
+  geom_half_boxplot(width = 0.15,outlier.shape = NA,fill="white")+ 
+  scale_fill_jama(alpha = 0.8)+
+  coord_flip()+  
+  #geom_hline(yintercept = 0,linetype = 'dashed',color = '#000000',size = 0.4)+
+  theme_bw()+
+  theme(legend.position = "none",
+        aspect.ratio = 7/4)
+
+
+nrow(coef_AR1_premean_sig_2000_2010[which(coef_AR1_premean_sig_2000_2010$coef>0),]) #75809
+nrow(coef_AR1_premean_sig_2000_2010[which(coef_AR1_premean_sig_2000_2010$coef<=0),]) #90889
+
+nrow(coef_AR1_precv_sig_2000_2010[which(coef_AR1_precv_sig_2000_2010$coef>0),]) #138790
+nrow(coef_AR1_precv_sig_2000_2010[which(coef_AR1_precv_sig_2000_2010$coef<=0),]) #33581
+
+nrow(coef_AR1_temmean_sig_2000_2010[which(coef_AR1_temmean_sig_2000_2010$coef>0),]) #81415
+nrow(coef_AR1_temmean_sig_2000_2010[which(coef_AR1_temmean_sig_2000_2010$coef<=0),]) #77633
+
+nrow(coef_AR1_temcv_sig_2000_2010[which(coef_AR1_temcv_sig_2000_2010$coef>0),]) #107737
+nrow(coef_AR1_temcv_sig_2000_2010[which(coef_AR1_temcv_sig_2000_2010$coef<=0),]) #32781
+
+nrow(coef_AR1_petmean_sig_2000_2010[which(coef_AR1_petmean_sig_2000_2010$coef>0),]) #99102
+nrow(coef_AR1_petmean_sig_2000_2010[which(coef_AR1_petmean_sig_2000_2010$coef<=0),]) #67129
+
+nrow(coef_AR1_aimean_sig_2000_2010[which(coef_AR1_aimean_sig_2000_2010$coef>0),]) #94255
+nrow(coef_AR1_aimean_sig_2000_2010[which(coef_AR1_aimean_sig_2000_2010$coef<=0),]) #52079
+
+
+```
+
+
+### Regression coefficients in 2011-2020 (Fig. 5a right) 
+
+
+```{r}
+load("./mlm_AR1_variables_2011_2020.RData")
+
+coef_AR1_premean_2011_2020<-mlm_AR1_variables_2011_2020[,3:4]
+coef_AR1_precv_2011_2020<-mlm_AR1_variables_2011_2020[,6:7]
+coef_AR1_temmean_2011_2020<-mlm_AR1_variables_2011_2020[,9:10]
+coef_AR1_temcv_2011_2020<-mlm_AR1_variables_2011_2020[,12:13]
+coef_AR1_petmean_2011_2020<-mlm_AR1_variables_2011_2020[,15:16]
+coef_AR1_aimean_2011_2020<-mlm_AR1_variables_2011_2020[,18:19]
+
+rel_AR1_premean_2011_2020<-mlm_AR1_variables_2011_2020[,4:5]
+rel_AR1_precv_2011_2020<-mlm_AR1_variables_2011_2020[,7:8]
+rel_AR1_temmean_2011_2020<-mlm_AR1_variables_2011_2020[,10:11]
+rel_AR1_temcv_2011_2020<-mlm_AR1_variables_2011_2020[,13:14]
+rel_AR1_petmean_2011_2020<-mlm_AR1_variables_2011_2020[,16:17]
+rel_AR1_aimean_2011_2020<-mlm_AR1_variables_2011_2020[,19:20]
+
+#remove the non-significant grids
+coef_AR1_premean_sig_2011_2020<-coef_AR1_premean_2011_2020[-which(coef_AR1_premean_2011_2020$premean_p > 0.05|is.na(coef_AR1_premean_2011_2020$premean_p)),]
+coef_AR1_precv_sig_2011_2020<-coef_AR1_precv_2011_2020[-which(coef_AR1_precv_2011_2020$precv_p > 0.05|is.na(coef_AR1_precv_2011_2020$precv_p)),]
+coef_AR1_temmean_sig_2011_2020<-coef_AR1_temmean_2011_2020[-which(coef_AR1_temmean_2011_2020$temmean_p > 0.05|is.na(coef_AR1_temmean_2011_2020$temmean_p)),]
+coef_AR1_temcv_sig_2011_2020<-coef_AR1_temcv_2011_2020[-which(coef_AR1_temcv_2011_2020$temcv_p > 0.05|is.na(coef_AR1_temcv_2011_2020$temcv_p)),]
+coef_AR1_petmean_sig_2011_2020<-coef_AR1_petmean_2011_2020[-which(coef_AR1_petmean_2011_2020$petmean_p > 0.05|is.na(coef_AR1_petmean_2011_2020$petmean_p)),]
+coef_AR1_aimean_sig_2011_2020<-coef_AR1_aimean_2011_2020[-which(coef_AR1_aimean_2011_2020$aimean_p > 0.05|is.na(coef_AR1_aimean_2011_2020$aimean_p)),]
+
+rel_AR1_premean_sig_2011_2020<-rel_AR1_premean_2011_2020[-which(rel_AR1_premean_2011_2020$premean_p > 0.05|is.na(rel_AR1_premean_2011_2020$premean_p)),]
+rel_AR1_precv_sig_2011_2020<-rel_AR1_precv_2011_2020[-which(rel_AR1_precv_2011_2020$precv_p > 0.05|is.na(rel_AR1_precv_2011_2020$precv_p)),]
+rel_AR1_temmean_sig_2011_2020<-rel_AR1_temmean_2011_2020[-which(rel_AR1_temmean_2011_2020$temmean_p > 0.05|is.na(rel_AR1_temmean_2011_2020$temmean_p)),]
+rel_AR1_temcv_sig_2011_2020<-rel_AR1_temcv_2011_2020[-which(rel_AR1_temcv_2011_2020$temcv_p > 0.05|is.na(rel_AR1_temcv_2011_2020$temcv_p)),]
+rel_AR1_petmean_sig_2011_2020<-rel_AR1_petmean_2011_2020[-which(rel_AR1_petmean_2011_2020$petmean_p > 0.05|is.na(rel_AR1_petmean_2011_2020$petmean_p)),]
+rel_AR1_aimean_sig_2011_2020<-rel_AR1_aimean_2011_2020[-which(rel_AR1_aimean_2011_2020$aimean_p > 0.05|is.na(rel_AR1_aimean_2011_2020$aimean_p)),]
+
+colnames(coef_AR1_premean_sig_2011_2020)<-c("coef","p_value")
+colnames(coef_AR1_precv_sig_2011_2020)<-c("coef","p_value")
+colnames(coef_AR1_temmean_sig_2011_2020)<-c("coef","p_value")
+colnames(coef_AR1_temcv_sig_2011_2020)<-c("coef","p_value")
+colnames(coef_AR1_petmean_sig_2011_2020)<-c("coef","p_value")
+colnames(coef_AR1_aimean_sig_2011_2020)<-c("coef","p_value")
+
+colnames(rel_AR1_premean_sig_2011_2020)<-c("p_value","rel")
+colnames(rel_AR1_precv_sig_2011_2020)<-c("p_value","rel")
+colnames(rel_AR1_temmean_sig_2011_2020)<-c("p_value","rel")
+colnames(rel_AR1_temcv_sig_2011_2020)<-c("p_value","rel")
+colnames(rel_AR1_petmean_sig_2011_2020)<-c("p_value","rel")
+colnames(rel_AR1_aimean_sig_2011_2020)<-c("p_value","rel")
+
+coef_AR1_premean_sig_2011_2020$variable<-rep("AR1_premean",nrow(coef_AR1_premean_sig_2011_2020))
+coef_AR1_precv_sig_2011_2020$variable<-rep("AR1_precv",nrow(coef_AR1_precv_sig_2011_2020))
+coef_AR1_temmean_sig_2011_2020$variable<-rep("AR1_temmean",nrow(coef_AR1_temmean_sig_2011_2020))
+coef_AR1_temcv_sig_2011_2020$variable<-rep("AR1_temcv",nrow(coef_AR1_temcv_sig_2011_2020))
+coef_AR1_petmean_sig_2011_2020$variable<-rep("AR1_petmean",nrow(coef_AR1_petmean_sig_2011_2020))
+coef_AR1_aimean_sig_2011_2020$variable<-rep("AR1_aimean",nrow(coef_AR1_aimean_sig_2011_2020))
+
+rel_AR1_premean_sig_2011_2020$variable<-rep("AR1_premean",nrow(rel_AR1_premean_sig_2011_2020))
+rel_AR1_precv_sig_2011_2020$variable<-rep("AR1_precv",nrow(rel_AR1_precv_sig_2011_2020))
+rel_AR1_temmean_sig_2011_2020$variable<-rep("AR1_temmean",nrow(rel_AR1_temmean_sig_2011_2020))
+rel_AR1_temcv_sig_2011_2020$variable<-rep("AR1_temcv",nrow(rel_AR1_temcv_sig_2011_2020))
+rel_AR1_petmean_sig_2011_2020$variable<-rep("AR1_petmean",nrow(rel_AR1_petmean_sig_2011_2020))
+rel_AR1_aimean_sig_2011_2020$variable<-rep("AR1_aimean",nrow(rel_AR1_aimean_sig_2011_2020))
+
+
+#Remove below 5% and above 95%
+coef_premean_quan11<-quantile(coef_AR1_premean_sig_2011_2020$coef,c(0.05,0.95))
+coef_precv_quan11<-quantile(coef_AR1_precv_sig_2011_2020$coef,c(0.05,0.95))
+coef_temmen_quan11<-quantile(coef_AR1_temmean_sig_2011_2020$coef,c(0.05,0.95))
+coef_temcv_quan11<-quantile(coef_AR1_temcv_sig_2011_2020$coef,c(0.05,0.95))
+coef_petmean_quan11<-quantile(coef_AR1_petmean_sig_2011_2020$coef,c(0.05,0.95))
+coef_aimean_quan11<-quantile(coef_AR1_aimean_sig_2011_2020$coef,c(0.05,0.95))
+
+rel_premean_quan11<-quantile(rel_AR1_premean_sig_2011_2020$rel,c(0.05,0.95))
+rel_precv_quan11<-quantile(rel_AR1_precv_sig_2011_2020$rel,c(0.05,0.95))
+rel_temmen_quan11<-quantile(rel_AR1_temmean_sig_2011_2020$rel,c(0.05,0.95))
+rel_temcv_quan11<-quantile(rel_AR1_temcv_sig_2011_2020$rel,c(0.05,0.95))
+rel_petmean_quan11<-quantile(rel_AR1_petmean_sig_2011_2020$rel,c(0.05,0.95))
+rel_aimean_quan11<-quantile(rel_AR1_aimean_sig_2011_2020$rel,c(0.05,0.95))
+
+coef_AR1_premean_sig_2011_2020<-coef_AR1_premean_sig_2011_2020[-which(coef_AR1_premean_sig_2011_2020$coef<coef_premean_quan11[1]|coef_AR1_premean_sig_2011_2020$coef>coef_premean_quan11[2]),]
+coef_AR1_precv_sig_2011_2020<-coef_AR1_precv_sig_2011_2020[-which(coef_AR1_precv_sig_2011_2020$coef<coef_precv_quan11[1]|coef_AR1_precv_sig_2011_2020$coef>coef_precv_quan11[2]),]
+coef_AR1_temmean_sig_2011_2020<-coef_AR1_temmean_sig_2011_2020[-which(coef_AR1_temmean_sig_2011_2020$coef<coef_temmen_quan11[1]|coef_AR1_temmean_sig_2011_2020$coef>coef_temmen_quan11[2]),]
+coef_AR1_temcv_sig_2011_2020<-coef_AR1_temcv_sig_2011_2020[-which(coef_AR1_temcv_sig_2011_2020$coef<coef_temcv_quan11[1]|coef_AR1_temcv_sig_2011_2020$coef>coef_temcv_quan11[2]),]
+coef_AR1_petmean_sig_2011_2020<-coef_AR1_petmean_sig_2011_2020[-which(coef_AR1_petmean_sig_2011_2020$coef<coef_petmean_quan11[1]|coef_AR1_petmean_sig_2011_2020$coef>coef_petmean_quan11[2]),]
+coef_AR1_aimean_sig_2011_2020<-coef_AR1_aimean_sig_2011_2020[-which(coef_AR1_aimean_sig_2011_2020$coef<coef_aimean_quan11[1]|coef_AR1_aimean_sig_2011_2020$coef>coef_aimean_quan11[2]),]
+
+rel_AR1_premean_sig_2011_2020<-rel_AR1_premean_sig_2011_2020[-which(rel_AR1_premean_sig_2011_2020$rel<rel_premean_quan11[1]|rel_AR1_premean_sig_2011_2020$rel>rel_premean_quan11[2]),]
+rel_AR1_precv_sig_2011_2020<-rel_AR1_precv_sig_2011_2020[-which(rel_AR1_precv_sig_2011_2020$rel<rel_precv_quan11[1]|rel_AR1_precv_sig_2011_2020$rel>rel_precv_quan11[2]),]
+rel_AR1_temmean_sig_2011_2020<-rel_AR1_temmean_sig_2011_2020[-which(rel_AR1_temmean_sig_2011_2020$rel<rel_temmen_quan11[1]|rel_AR1_temmean_sig_2011_2020$rel>rel_temmen_quan11[2]),]
+rel_AR1_temcv_sig_2011_2020<-rel_AR1_temcv_sig_2011_2020[-which(rel_AR1_temcv_sig_2011_2020$rel<rel_temcv_quan11[1]|rel_AR1_temcv_sig_2011_2020$rel>rel_temcv_quan11[2]),]
+rel_AR1_petmean_sig_2011_2020<-rel_AR1_petmean_sig_2011_2020[-which(rel_AR1_petmean_sig_2011_2020$rel<rel_petmean_quan11[1]|rel_AR1_petmean_sig_2011_2020$rel>rel_petmean_quan11[2]),]
+rel_AR1_aimean_sig_2011_2020<-rel_AR1_aimean_sig_2011_2020[-which(rel_AR1_aimean_sig_2011_2020$rel<rel_aimean_quan11[1]|rel_AR1_aimean_sig_2011_2020$rel>rel_aimean_quan11[2]),]
+
+coef_11_20<-rbind(coef_AR1_premean_sig_2011_2020,coef_AR1_precv_sig_2011_2020,coef_AR1_temmean_sig_2011_2020,coef_AR1_temcv_sig_2011_2020,coef_AR1_petmean_sig_2011_2020,coef_AR1_aimean_sig_2011_2020)
+#rm(coef_AR1_premean_sig_2011_2020,coef_AR1_precv_sig_2011_2020,coef_AR1_temmean_sig_2011_2020,coef_AR1_temcv_sig_2011_2020,coef_AR1_petmean_sig_2011_2020,coef_AR1_aimean_sig_2011_2020)
+
+rel_11_20<-rbind(rel_AR1_premean_sig_2011_2020,rel_AR1_precv_sig_2011_2020,rel_AR1_temmean_sig_2011_2020,rel_AR1_temcv_sig_2011_2020,rel_AR1_petmean_sig_2011_2020,rel_AR1_aimean_sig_2011_2020)
+rm(rel_AR1_premean_sig_2011_2020,rel_AR1_precv_sig_2011_2020,rel_AR1_temmean_sig_2011_2020,rel_AR1_temcv_sig_2011_2020,rel_AR1_petmean_sig_2011_2020,rel_AR1_aimean_sig_2011_2020)
+
+
+coef_11_20$variable <- factor(coef_11_20$variable,levels=c("AR1_aimean",
+                                                           "AR1_petmean",
+                                                           "AR1_temcv",
+                                                           "AR1_precv",
+                                                           "AR1_temmean",
+                                                           "AR1_premean"
+                                                           ))
+rel_11_20$variable <- factor(rel_11_20$variable,levels=c("AR1_aimean",
+                                                           "AR1_petmean",
+                                                           "AR1_temcv",
+                                                           "AR1_precv",
+                                                           "AR1_temmean",
+                                                           "AR1_premean"
+                                                          ))
+
+ggplot(coef_11_20,aes(variable,coef,fill = variable)) +
+  geom_half_violin(stat = "half_ydensity",trim=FALSE,side = "r")+ 
+  geom_half_boxplot(width = 0.15,outlier.shape = NA,fill="white")+
+  scale_fill_jama(alpha = 0.8)+
+  coord_flip()+  
+  geom_hline(yintercept = 0,linetype = 'dashed',color = '#000000',size = 0.4)+
+  theme_bw()+
+  theme(legend.position = "none",
+        aspect.ratio = 7/4)
+
+ggplot(rel_11_20,aes(variable,rel,fill = variable)) +
+  geom_half_violin(stat = "half_ydensity",trim=FALSE,side = "r")+ 
+  geom_half_boxplot(width = 0.15,outlier.shape = NA,fill="white")+ 
+  scale_fill_jama(alpha = 0.8)+
+  coord_flip()+  
+  geom_hline(yintercept = 0,linetype = 'dashed',color = '#000000',size = 0.4)+
+  theme_bw()+
+  theme(legend.position = "none",
+        aspect.ratio = 7/4)
+
+#开始做信息标注
+nrow(coef_AR1_premean_sig_2011_2020[which(coef_AR1_premean_sig_2011_2020$coef>0),]) #35551
+nrow(coef_AR1_premean_sig_2011_2020[which(coef_AR1_premean_sig_2011_2020$coef<=0),]) #110511
+ 
+nrow(coef_AR1_precv_sig_2011_2020[which(coef_AR1_precv_sig_2011_2020$coef>0),]) #80018
+nrow(coef_AR1_precv_sig_2011_2020[which(coef_AR1_precv_sig_2011_2020$coef<=0),]) #65496
+
+nrow(coef_AR1_temmean_sig_2011_2020[which(coef_AR1_temmean_sig_2011_2020$coef>0),]) #73175
+nrow(coef_AR1_temmean_sig_2011_2020[which(coef_AR1_temmean_sig_2011_2020$coef<=0),]) #65173
+
+nrow(coef_AR1_temcv_sig_2011_2020[which(coef_AR1_temcv_sig_2011_2020$coef>0),]) #69086
+nrow(coef_AR1_temcv_sig_2011_2020[which(coef_AR1_temcv_sig_2011_2020$coef<=0),]) #47535
+
+nrow(coef_AR1_petmean_sig_2011_2020[which(coef_AR1_petmean_sig_2011_2020$coef>0),]) #68018
+nrow(coef_AR1_petmean_sig_2011_2020[which(coef_AR1_petmean_sig_2011_2020$coef<=0),]) #75586
+
+nrow(coef_AR1_aimean_sig_2011_2020[which(coef_AR1_aimean_sig_2011_2020$coef>0),]) #102057
+nrow(coef_AR1_aimean_sig_2011_2020[which(coef_AR1_aimean_sig_2011_2020$coef<=0),]) #47841
+```
+
+
+### Changes in Relative importance of climatic factors (Fig. 5b)
+
+```{r}
+load("./mlm_AR1_variables_2000_2010.RData")
+load("./mlm_AR1_variables_2011_2020.RData")
+
+rel_premean_00_10<-mlm_AR1_variables_2000_2010[,c(1,2,4,5)]
+rel_precv_00_10<-mlm_AR1_variables_2000_2010[,c(1,2,7,8)]
+rel_temmean_00_10<-mlm_AR1_variables_2000_2010[,c(1,2,10,11)]
+rel_temcv_00_10<-mlm_AR1_variables_2000_2010[,c(1,2,13,14)]
+rel_petmean_00_10<-mlm_AR1_variables_2000_2010[,c(1,2,16,17)]
+rel_aimean_00_10<-mlm_AR1_variables_2000_2010[,c(1,2,19,20)]
+
+rel_premean_11_20<-mlm_AR1_variables_2011_2020[,c(1,2,4,5)]
+rel_precv_11_20<-mlm_AR1_variables_2011_2020[,c(1,2,7,8)]
+rel_temmean_11_20<-mlm_AR1_variables_2011_2020[,c(1,2,10,11)]
+rel_temcv_11_20<-mlm_AR1_variables_2011_2020[,c(1,2,13,14)]
+rel_petmean_11_20<-mlm_AR1_variables_2011_2020[,c(1,2,16,17)]
+rel_aimean_11_20<-mlm_AR1_variables_2011_2020[,c(1,2,19,20)]
+
+rel_premean_00_10<-rel_premean_00_10[-which(rel_premean_00_10$premean_p>0.05),]
+rel_precv_00_10<-rel_precv_00_10[-which(rel_precv_00_10$precv_p>0.05),]
+rel_temmean_00_10<-rel_temmean_00_10[-which(rel_temmean_00_10$temmean_p>0.05),]
+rel_temcv_00_10<-rel_temcv_00_10[-which(rel_temcv_00_10$temcv_p>0.05),]
+rel_petmean_00_10<-rel_petmean_00_10[-which(rel_petmean_00_10$petmean_p>0.05),]
+rel_aimean_00_10<-rel_aimean_00_10[-which(rel_aimean_00_10$aimean_p>0.05),]
+
+rel_premean_11_20<-rel_premean_11_20[-which(rel_premean_11_20$premean_p>0.05),]
+rel_precv_11_20<-rel_precv_11_20[-which(rel_precv_11_20$precv_p>0.05),]
+rel_temmean_11_20<-rel_temmean_11_20[-which(rel_temmean_11_20$temmean_p>0.05),]
+rel_temcv_11_20<-rel_temcv_11_20[-which(rel_temcv_11_20$temcv_p>0.05),]
+rel_petmean_11_20<-rel_petmean_11_20[-which(rel_petmean_11_20$petmean_p>0.05),]
+rel_aimean_11_20<-rel_aimean_11_20[-which(rel_aimean_11_20$aimean_p>0.05),]
+
+rel_premean<-left_join(rel_premean_00_10,rel_premean_11_20,by=c("x","y"))
+rel_precv<-left_join(rel_precv_00_10,rel_precv_11_20,by=c("x","y"))
+rel_temmean<-left_join(rel_temmean_00_10,rel_temmean_11_20,by=c("x","y"))
+rel_temcv<-left_join(rel_temcv_00_10,rel_temcv_11_20,by=c("x","y"))
+rel_petmean<-left_join(rel_petmean_00_10,rel_petmean_11_20,by=c("x","y"))
+rel_aimean<-left_join(rel_aimean_00_10,rel_aimean_11_20,by=c("x","y"))
+
+rel_premean<-na.omit(rel_premean)
+rel_precv<-na.omit(rel_precv)
+rel_temmean<-na.omit(rel_temmean)
+rel_temcv<-na.omit(rel_temcv)
+rel_petmean<-na.omit(rel_petmean)
+rel_aimean<-na.omit(rel_aimean)
+
+rel_premean<-data.frame(rel=rel_premean$premean_rel.y-rel_premean$premean_rel.x)
+rel_precv<-data.frame(rel=rel_precv$precv_rel.y-rel_precv$precv_rel.x)
+rel_temmean<-data.frame(rel=rel_temmean$temmean_rel.y-rel_temmean$temmean_rel.x)
+rel_temcv<-data.frame(rel=rel_temcv$temcv_rel.y-rel_temcv$temcv_rel.x)
+rel_petmean<-data.frame(rel=rel_petmean$petmean_rel.y-rel_petmean$petmean_rel.x)
+rel_aimean<-data.frame(rel=rel_aimean$aimean_rel.y-rel_aimean$aimean_rel.x)
+
+rel_premean$variable<-rep("premean",nrow(rel_premean))
+rel_precv$variable<-rep("precv",nrow(rel_precv))
+rel_temmean$variable<-rep("temmean",nrow(rel_temmean))
+rel_temcv$variable<-rep("temcv",nrow(rel_temcv))
+rel_petmean$variable<-rep("petmean",nrow(rel_petmean))
+rel_aimean$variable<-rep("aimean",nrow(rel_aimean))
+
+datall<-rbind(rel_premean,rel_precv,rel_temmean,rel_temcv,rel_petmean,rel_aimean)
+#rm(rel_premean,rel_precv,rel_temmean,rel_temcv,rel_petmean,rel_aimean)
+
+datall$variable <- factor(datall$variable,levels=c("premean","temmean","precv","temcv","petmean","aimean"))
+
+ggplot(datall, aes(x = rel, fill = variable)) +
+  geom_histogram(bins = 80) + #color = "black"#
+  geom_vline(data = aggregate(rel ~ variable, datall, FUN = "mean"), aes(xintercept = rel), 
+             color = "#ff2e63", linetype = "solid", size = 0.5) +  
+  #geom_vline(data = aggregate(rel ~ variable, datall, function(x) mean(x) - (sd(x) / sqrt(length(x)))), aes(xintercept = rel), 
+             #color = "#ffb8d9", linetype = "dashed", size = 0.6) +
+  #geom_vline(data = aggregate(rel ~ variable, datall, function(x) mean(x) + (sd(x) / sqrt(length(x)))), aes(xintercept = rel), 
+             #color = "#ffb8d9", linetype = "dashed", size = 0.6) +
+  geom_vline(xintercept = 0,linetype = 'dashed',color = '#000000',size = 0.5)+
+  facet_grid(variable ~ .)+ 
+  xlim(-0.3, 0.3)+
+  scale_fill_jama(alpha = 0.8)+
+  #scale_fill_manual(values = c("#0f9713", "#bc1b3c", "#f27405", "#f1b90d")) + 
+  labs(title = "", x = "Relative importance", y = "") + 
+  theme_bw()+ 
+  theme(legend.position = "none",  
+        #strip.background = element_rect(fill = c("white")),
+        #panel.grid = element_line(linetype = "dotted", color = "black"),
+        panel.grid.minor = element_blank(),  
+        panel.border = element_blank(), 
+        axis.line.x.bottom = element_line(color = "black", size = 0.5),
+        axis.line.y.left = element_line(color = "black", size = 0.5), 
+        #axis.line.y.right = element_line(color = "black", size = 0.5),
+        axis.title.x = element_text(face = "bold"), 
+        aspect.ratio = 5/20)
+
+
+nrow(rel_premean[which(rel_premean$rel<0),]) #55399
+nrow(rel_premean[which(rel_premean$rel>=0),]) #36418
+
+nrow(rel_precv[which(rel_precv$rel<0),]) #39477
+nrow(rel_precv[which(rel_precv$rel>=0),]) #54189
+
+nrow(rel_temmean[which(rel_temmean$rel<0),]) #37539
+nrow(rel_temmean[which(rel_temmean$rel>=0),]) #44048
+
+nrow(rel_temcv[which(rel_temcv$rel<0),]) #40792
+nrow(rel_temcv[which(rel_temcv$rel>=0),]) #23670
+
+nrow(rel_petmean[which(rel_petmean$rel<0),]) #33706
+nrow(rel_petmean[which(rel_petmean$rel>=0),]) #55411
+
+nrow(rel_aimean[which(rel_aimean$rel<0),]) #46165
+nrow(rel_aimean[which(rel_aimean$rel>=0),]) #35481
+```
+
+
+
+
+
+
